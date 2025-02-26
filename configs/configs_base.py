@@ -22,6 +22,7 @@ from protenix.config.extend_types import (
 )
 
 basic_configs = {
+    "classifier": True,
     "project": RequiredValue(str),
     "run_name": RequiredValue(str),
     "base_dir": RequiredValue(str),
@@ -115,6 +116,7 @@ model_configs = {
         "confidence_head": True,
         "sample_diffusion_training": True,
         "loss": True,
+        "confidence_classifier":True,
     },
     "infer_setting": {
         "chunk_size": ValueMaybeNone(
@@ -237,6 +239,11 @@ model_configs = {
             "c_z": GlobalConfigValue("c_z"),
             "no_bins": GlobalConfigValue("no_bins"),
         },
+        "confidence_classifier":{
+            'use_confidence': True,  # Whether to use the confidence scores in classification
+            'hidden_units': 16,  # Example: number of hidden units in the MLP classifier
+            'output_units': 1,  #
+        }
     },
 }
 perm_configs = {
@@ -286,6 +293,7 @@ loss_configs = {
             "alpha_distogram": 3e-2,
             "alpha_bond": 0.0,  # or 1 in finetuning stages
             "smooth_lddt": 1.0,  # or 0 in finetuning stages
+            'classifier':1.0 
         },
         "plddt": {
             "min_bin": 0,

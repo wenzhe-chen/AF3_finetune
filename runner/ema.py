@@ -13,8 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
-
+import torch   
 
 class EMAWrapper(object):
     """A wrapper class for exponential moving average of model weights."""
@@ -34,22 +33,42 @@ class EMAWrapper(object):
         ]
         self.shadow = {}
         self.backup = {}
-
+        self.register()  # Initialize shadow parameters on creation
+    
     def register(self):
+        """Register all current model parameters to EMA shadow."""
         for name, param in self.model.named_parameters():
             self.shadow[name] = param.data.clone()
 
     def update(self):
+        """Update EMA parameters. Auto-add missing parameters from the model."""
         for name, param in self.model.named_parameters():
+            # Skip non-mutable parameters (if specified)
             if self.mutable_param_keywords and not any(
                 [keyword in name for keyword in self.mutable_param_keywords]
             ):
                 continue
-            assert name in self.shadow
-            new_average = (1.0 - self.decay) * param.data + self.decay * self.shadow[
-                name
-            ]
+
+            # Add missing parameters to shadow (instead of asserting)
+            if name not in self.shadow:
+                self.shadow[name] = param.data.clone()
+                continue
+
+            # Update existing parameters
+            new_average = (1.0 - self.decay) * param.data + self.decay * self.shadow[name]
             self.shadow[name] = new_average.clone()
+
+    # def update(self):
+    #     for name, param in self.model.named_parameters():
+    #         if self.mutable_param_keywords and not any(
+    #             [keyword in name for keyword in self.mutable_param_keywords]
+    #         ):
+    #             continue
+    #         assert name in self.shadow
+    #         new_average = (1.0 - self.decay) * param.data + self.decay * self.shadow[
+    #             name
+    #         ]
+    #         self.shadow[name] = new_average.clone()
 
     def apply_shadow(self):
         for name, param in self.model.named_parameters():

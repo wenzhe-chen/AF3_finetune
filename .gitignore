@@ -135,3 +135,8 @@ cython_debug/
 
 wandb/
 output/
+
+af3-dev/
+*.log
+hh-suite/
+cutlass/

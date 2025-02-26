@@ -275,6 +275,7 @@ class AF3Trainer(object):
 
     def model_forward(self, batch: dict, mode: str = "train") -> tuple[dict, dict]:
         assert mode in ["train", "eval"]
+        #print("input_feature_dict",batch["input_feature_dict"]["asym_id"])
         batch["pred_dict"], batch["label_dict"], log_dict = self.model(
             input_feature_dict=batch["input_feature_dict"],
             label_dict=batch["label_dict"],
@@ -486,6 +487,7 @@ class AF3Trainer(object):
 
         while True:
             for batch in self.train_dl:
+                #self.print(f'batch:{batch}')
                 is_update_step = (self.global_step + 1) % self.iters_to_accumulate == 0
                 is_last_step = (self.step + 1) == self.configs.max_steps
                 step_need_log = (self.step + 1) % self.configs.log_interval == 0
@@ -551,6 +553,7 @@ def main():
         level=logging.INFO,
         datefmt="%Y-%m-%d %H:%M:%S",
         filemode="w",
+        filename="training.log",
     )
 
     configs = {**configs_base, **{"data": data_configs}}
@@ -560,7 +563,7 @@ def main():
     )
 
     print(configs.run_name)
-    print(configs)
+    #print(configs)
     trainer = AF3Trainer(configs)
     trainer.run()
 

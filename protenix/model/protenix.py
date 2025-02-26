@@ -39,6 +39,7 @@ from .modules.embedders import InputFeatureEmbedder, RelativePositionEncoding
 from .modules.head import DistogramHead
 from .modules.pairformer import MSAModule, PairformerStack, TemplateEmbedder
 from .modules.primitives import LinearNoBias
+from .modules.classifier import ConfidenceClassifier
 
 logger = get_logger(__name__)
 
@@ -82,6 +83,9 @@ class Protenix(nn.Module):
         self.diffusion_module = DiffusionModule(**configs.model.diffusion_module)
         self.distogram_head = DistogramHead(**configs.model.distogram_head)
         self.confidence_head = ConfidenceHead(**configs.model.confidence_head)
+        #print("Configs:", self.configs)
+        #if self.configs['classifier']:
+        #    self.confidence_classifier = ConfidenceClassifier(**configs.model.confidence_classifier)
 
         self.c_s, self.c_z, self.c_s_inputs = (
             configs.c_s,
@@ -288,6 +292,11 @@ class Protenix(nn.Module):
             self.confidence_head
         )(*args, **kwargs)
 
+    def run_confidence_classifier(self, *args, **kwargs):
+        return autocasting_disable_decorator(self.configs.skip_amp.confidence_classifier)(
+            self.confidence_classifier
+        )(*args, **kwargs) 
+
     def main_inference_loop(
         self,
         input_feature_dict: dict[str, Any],
@@ -331,6 +340,7 @@ class Protenix(nn.Module):
             pred_dicts.append(pred_dict)
             log_dicts.append(log_dict)
             time_trackers.append(time_tracker)
+        print(f"Keys in pred_dicts: {[list(x.keys()) for x in pred_dicts]}")
 
         # Combine outputs of multiple models
         def _cat(dict_list, key):
@@ -346,8 +356,13 @@ class Protenix(nn.Module):
             "plddt": _cat(pred_dicts, "plddt"),
             "pae": _cat(pred_dicts, "pae"),
             "pde": _cat(pred_dicts, "pde"),
-            "resolved": _cat(pred_dicts, "resolved"),
+            "resolved": _cat(pred_dicts, "resolved")
         }
+
+        if self.configs['classifier']:
+            all_pred_dict['binder']=_cat(pred_dicts, "binder")
+
+        #print('all_pred_dict',all_pred_dict)
 
         all_log_dict = simple_merge_dict_list(log_dicts)
         all_time_dict = simple_merge_dict_list(time_trackers)
@@ -474,6 +489,7 @@ class Protenix(nn.Module):
 
         # Summary Confidence & Full Data
         # Computed after coordinates and logits are permuted
+        #print (input_feature_dict["asym_id"])
         if label_dict is None:
             interested_atom_mask = None
         else:
@@ -505,6 +521,54 @@ class Protenix(nn.Module):
                 ),
             )
         )
+
+        #print('summary_confidence:',pred_dict["summary_confidence"],
+        #    'full_data_shape:',pred_dict["full_data"])
+
+        if self.configs['classifier']:
+
+            keys = [
+                'plddt', 'gpde', 'ptm', 'iptm', 
+                #'chain_ptm', 'chain_iptm', 
+                #'chain_pair_iptm', 'chain_pair_iptm_global', 
+                #'chain_plddt', 'chain_pair_plddt', 
+                'has_clash', #'disorder'
+            ]
+
+            # For each sample in summary_confidence, flatten and concatenate all specified keys.
+            features = [
+                torch.cat(
+                    [sample[k].flatten() if torch.is_tensor(sample[k]) 
+                    else torch.tensor(sample[k]).flatten() for k in keys],
+                    dim=-1
+                )
+                for sample in pred_dict["summary_confidence"]
+            ]
+
+            # Stack all sample feature vectors into a single tensor with shape [5, feature_dim]
+            confidence_scores = torch.stack(features, dim=0)
+            print('confidence_scores_shape:',confidence_scores.shape)
+
+            # Ensure classifier input dimension matches
+            if not hasattr(self, 'confidence_classifier'):
+                input_dim = confidence_scores.shape[-1]  # 4 * N_token
+                self.confidence_classifier = ConfidenceClassifier(
+                    input_dim=input_dim,
+                    hidden_units=self.configs['model']['confidence_classifier']['hidden_units'],
+                    output_units=self.configs['model']['confidence_classifier']['output_units']
+                ).to(confidence_scores.device)
+
+            # Forward pass on GPU
+            confidence_output = self.confidence_classifier(confidence_scores)
+
+            # Store confidence-based classification output
+            pred_dict['binder'] = torch.round(torch.sigmoid(confidence_output))
+            print(confidence_output, pred_dict['binder'])
+
+            for i in range (len(pred_dict["summary_confidence"])):
+                pred_dict["summary_confidence"][i]['binder']= pred_dict['binder'][i]
+            
+            print(pred_dict["summary_confidence"][0])
 
         return pred_dict, log_dict, time_tracker
 
@@ -608,6 +672,90 @@ class Protenix(nn.Module):
                 "resolved": resolved_pred,
             }
         )
+
+        print('plddt.shape',pred_dict['plddt'].shape)
+        #print('asym_id',input_feature_dict["asym_id"])
+
+        if self.configs['classifier']:
+            
+            # Combine confidence scores
+            #plddt_flattened = pred_dict["plddt"].view(pred_dict["plddt"].size(0), -1)
+            #pae_flattened = pred_dict["pae"].view(pred_dict["pae"].size(0), -1)  # Flatten last three axes
+            #pde_flattened = pred_dict["pde"].view(pred_dict["pde"].size(0), -1)  # Flatten last three axes
+            #resolved_flattened = pred_dict["resolved"].view(pred_dict["resolved"].size(0), -1)
+            #confidence_scores = torch.cat([plddt_flattened, pae_flattened, pde_flattened, resolved_flattened], dim=-1)
+
+            # Modified code to reduce dimensionality:
+            # Assuming PAE and PDE are [batch, N_res, N_res], take mean across one dimension
+            #pae_mean = pred_dict["pae"].mean(dim=-1)  # [batch, N_res]
+            #pde_mean = pred_dict["pde"].mean(dim=-1)  # [batch, N_res]
+            # Assuming plddt and resolved are [batch, N_res]
+            pred_dict["contact_probs"] = sample_confidence.compute_contact_prob(
+            distogram_logits=self.distogram_head(z),
+            **sample_confidence.get_bin_params(self.configs.loss.distogram),
+            )  # [N_token, N_token]
+            if label_dict is None:
+                interested_atom_mask = None
+            else:
+                interested_atom_mask = label_dict.get("interested_ligand_mask", None)
+
+            summary_confidence, full_data = sample_confidence.compute_confidence_summary(
+                configs=self.configs,
+                pae_logits=pred_dict["pae"],
+                plddt_logits=pred_dict["plddt"],
+                pde_logits=pred_dict["pde"],
+                contact_probs=pred_dict.get(
+                    "per_sample_contact_probs", pred_dict["contact_probs"]
+                ),
+                token_asym_id=input_feature_dict["asym_id"],
+                token_has_frame=input_feature_dict["has_frame"],
+                atom_coordinate=pred_dict["coordinate_mini"],
+                atom_to_token_idx=input_feature_dict["atom_to_token_idx"],
+                atom_is_polymer=1 - input_feature_dict["is_ligand"],
+                N_recycle=N_cycle,
+                interested_atom_mask=interested_atom_mask,
+                return_full_data=False,
+                mol_id=input_feature_dict["mol_id"],
+                elements_one_hot=input_feature_dict["ref_element"]
+                )
+            keys = [
+                'plddt', 'gpde', 'ptm', 'iptm', 
+                #'chain_ptm', 'chain_iptm', 
+                #'chain_pair_iptm', 'chain_pair_iptm_global', 
+                #'chain_plddt', 'chain_pair_plddt', 
+                'has_clash', #'disorder'
+            ]
+
+            # For each sample in summary_confidence, flatten and concatenate all specified keys.
+            features = [
+                torch.cat(
+                    [sample[k].flatten() if torch.is_tensor(sample[k]) 
+                    else torch.tensor(sample[k]).flatten() for k in keys],
+                    dim=-1
+                )
+                for sample in summary_confidence
+            ]
+
+            # Stack all sample feature vectors into a single tensor with shape [5, feature_dim]
+            confidence_scores = torch.stack(features, dim=0)
+            print('confidence_scores_shape:',confidence_scores.shape)
+
+            # Ensure classifier input dimension matches
+            if not hasattr(self, 'confidence_classifier'):
+                input_dim = confidence_scores.shape[-1]  # 4 * N_token
+                self.confidence_classifier = ConfidenceClassifier(
+                    input_dim=input_dim,
+                    hidden_units=self.configs['model']['confidence_classifier']['hidden_units'],
+                    output_units=self.configs['model']['confidence_classifier']['output_units']
+                ).to(confidence_scores.device)
+
+            # Forward pass on GPU
+            confidence_output = self.confidence_classifier(confidence_scores)
+
+            # Store confidence-based classification output
+            pred_dict['binder'] = torch.round(torch.sigmoid(confidence_output))
+            print(confidence_output, pred_dict['binder'])
+                
 
         if self.train_confidence_only:
             # Skip diffusion loss and distogram loss. Return now.

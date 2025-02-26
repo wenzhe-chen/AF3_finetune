@@ -1367,7 +1367,7 @@ def search_msa(sequence: str, db_fpath: str, res_fpath: str = ""):
 
     logger.info(f"Reformatting the MSA file. Will be saved to {res_fpath}")
 
-    cmd = f"/opt/hhsuite/scripts/reformat.pl {output_sto_path} {res_fpath}"
+    cmd = f"/home/fs01/wc648/protenix/hh-suite/scripts/reformat.pl {output_sto_path} {res_fpath}"
     try:
         subprocess.check_call(cmd, shell=True, executable="/bin/bash")
     except Exception as e:

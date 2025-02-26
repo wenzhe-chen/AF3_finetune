@@ -312,7 +312,7 @@ class Featurizer(object):
         token_features["entity_id"] = torch.Tensor(centre_atoms.entity_id_int).long()
         token_features["sym_id"] = torch.Tensor(centre_atoms.sym_id_int).long()
         token_features["restype"] = restype_onehot
-
+        #print('centre_atoms.asym_id_int',centre_atoms.asym_id_int)
         return token_features
 
     def get_chain_perm_features(self) -> dict[str, torch.Tensor]:

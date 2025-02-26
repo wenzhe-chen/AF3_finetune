@@ -1,0 +1,44 @@
+name: protenix
+channels:
+  - defaults
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.10
+  - cudatoolkit=11.8  # Use 11.8 since 12.1 is not available on conda-forge
+  - pytorch=2.0.1     # Adjusted to a compatible version that should work with CUDA 11.8
+  - cudnn=8
+  - scipy
+  - pandas
+  - tqdm
+  - numpy=1.26.3
+  - matplotlib=3.9.2
+  - scikit-learn=1.2.2
+  - scikit-learn-extra
+  - rdkit=2023.03.1
+  - biopython=1.83
+  - modelcif=0.7
+  - biotite=1.0.1
+  - gemmi=0.6.5
+  - protobuf=3.20.3       # Adjusted to a compatible version
+  - ipywidgets
+  - py3Dmol
+  - deepspeed=0.9.5       # Adjusted to a compatible version
+  - libffi
+  - libgcc-ng
+  - libstdcxx-ng
+  - zlib
+  - openssl
+  - cmake
+  - postgresql
+  - hmmer
+  - pip  # Ensure pip is included to handle additional pip-only dependencies
+
+# For additional packages not available via conda, use pip
+  - pip:
+      - ml_collections
+      - dm-tree==0.1.6
+      - icecream
+      - ipdb
+      - wandb
+      - nvidia-cublas-cu11  # Compatible with CUDA 11

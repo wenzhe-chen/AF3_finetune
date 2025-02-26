@@ -71,9 +71,10 @@ class BaseSingleDataset(Dataset):
         # General dataset configs
         self.ref_pos_augment = kwargs.get("ref_pos_augment", True)
         self.lig_atom_rename = kwargs.get("lig_atom_rename", False)
-        self.reassign_continuous_chain_ids = kwargs.get(
-            "reassign_continuous_chain_ids", False
-        )
+        # self.reassign_continuous_chain_ids = kwargs.get(
+        #     "reassign_continuous_chain_ids", True 
+        # )
+        self.reassign_continuous_chain_ids = True
         self.shuffle_mols = kwargs.get("shuffle_mols", False)
         self.shuffle_sym_ids = kwargs.get("shuffle_sym_ids", False)
 
@@ -466,7 +467,7 @@ class BaseSingleDataset(Dataset):
             bioassembly_dict["atom_array"] = self._reassign_atom_array_chain_id(
                 bioassembly_dict["atom_array"]
             )
-
+        print('atom_array',bioassembly_dict['pdb_id'])
         # Crop
         (
             crop_method,
@@ -481,6 +482,11 @@ class BaseSingleDataset(Dataset):
             **self.cropping_configs,
         )
 
+        if self.reassign_continuous_chain_ids:
+            cropped_atom_array = self._reassign_atom_array_chain_id(
+                cropped_atom_array
+            )
+        
         feat, label, label_full = self.get_feature_and_label(
             idx=idx,
             token_array=cropped_token_array,
@@ -1032,7 +1038,7 @@ def get_datasets(
     configs: ConfigDict, error_dir: Optional[str]
 ) -> tuple[WeightedMultiDataset, dict[str, BaseSingleDataset]]:
     """
-    Get training and testing datasets given configs
+    Get training and testing datasets  given configs
 
     Args:
         configs: A ConfigDict containing the dataset configurations.
@@ -1055,6 +1061,7 @@ def get_datasets(
             "lig_atom_rename": config_dict.get("lig_atom_rename", False),
             "shuffle_mols": config_dict.get("shuffle_mols", False),
             "shuffle_sym_ids": config_dict.get("shuffle_sym_ids", False),
+            #'binder': config_dict['binder']
         }
 
     data_config = configs.data

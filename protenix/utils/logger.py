@@ -26,7 +26,7 @@ class WarningFilter(logging.Filter):
 
 
 def get_logger(
-    name: str = "", loglevel: str = "INFO", log_file_path: Optional[str] = None
+    name: str = "", loglevel: str = "INFO", log_file_path: Optional[str] = 'training.log'
 ) -> logging.Logger:
     """
     Get a logger with the specified name and add handlers to the root logger.

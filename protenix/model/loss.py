@@ -809,7 +809,7 @@ class PAELoss(nn.Module):
         self,
         pred_coordinate: torch.Tensor,
         true_coordinate: torch.Tensor,
-        coordinate_mask: torch.Tensor,
+        coordinate_mask: torch.Tensor, 
         rep_atom_mask: torch.Tensor,
         frame_atom_index: torch.Tensor,
         has_frame: torch.Tensor,
@@ -1386,6 +1386,7 @@ class ProtenixLoss(nn.Module):
         self.alpha_distogram = self.configs.loss.weight.alpha_distogram
         self.alpha_bond = self.configs.loss.weight.alpha_bond
         self.weight_smooth_lddt = self.configs.loss.weight.smooth_lddt
+        self.classifier_weight = self.configs.loss.weight.classifier
 
         self.lddt_radius = {
             "is_nucleotide_threshold": 30.0,
@@ -1405,6 +1406,7 @@ class ProtenixLoss(nn.Module):
             * self.weight_smooth_lddt,  # Different from AF3 appendix eq(6), where smooth_lddt has no weight
             # distogram
             "distogram_loss": self.alpha_distogram,
+            'classifier_loss': self.classifier_weight
         }
 
         # Loss

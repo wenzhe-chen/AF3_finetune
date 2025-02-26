@@ -770,3 +770,210 @@ def compute_full_data_and_summary(
         summary_confidence.extend(summary_confidence_i)
         full_data.extend(full_data_i)
     return summary_confidence, full_data
+
+
+@torch.no_grad()
+def compute_confidence_summary(
+    configs,
+    pae_logits,
+    plddt_logits,
+    pde_logits,
+    contact_probs,
+    token_asym_id,
+    token_has_frame,
+    atom_coordinate,
+    atom_to_token_idx,
+    atom_is_polymer,
+    N_recycle,
+    return_full_data: bool = False,
+    interested_atom_mask=None,
+    mol_id=None,
+    elements_one_hot=None,
+):
+    """Wrapper of `_compute_confidence_summary` by enumerating over N samples"""
+
+    N_sample = pae_logits.size(0)
+    if contact_probs.dim() == 2:
+        # Convert to [N_sample, N_token, N_token]
+        contact_probs = contact_probs.unsqueeze(dim=0).expand(N_sample, -1, -1)
+    else:
+        assert contact_probs.dim() == 3
+    assert (
+        contact_probs.size(0) == plddt_logits.size(0) == pde_logits.size(0) == N_sample
+    )
+
+    summary_confidence = []
+    full_data = []
+    for i in range(N_sample):
+        summary_confidence_i, full_data_i = _compute_confidence_summary(
+            configs=configs,
+            pae_logits=pae_logits[i : i + 1],
+            plddt_logits=plddt_logits[i : i + 1],
+            pde_logits=pde_logits[i : i + 1],
+            contact_probs=contact_probs[i],
+            token_asym_id=token_asym_id,
+            token_has_frame=token_has_frame,
+            atom_coordinate=atom_coordinate[i : i + 1],
+            atom_to_token_idx=atom_to_token_idx,
+            atom_is_polymer=atom_is_polymer,
+            N_recycle=N_recycle,
+            interested_atom_mask=interested_atom_mask,
+            return_full_data=return_full_data,
+            mol_id=mol_id,
+            elements_one_hot=elements_one_hot,
+        )
+        summary_confidence.extend(summary_confidence_i)
+        full_data.extend(full_data_i)
+    return summary_confidence, full_data
+
+
+def _compute_confidence_summary(
+    configs: ConfigDict,
+    pae_logits: torch.Tensor,
+    plddt_logits: torch.Tensor,
+    pde_logits: torch.Tensor,
+    contact_probs: torch.Tensor,
+    token_asym_id: torch.Tensor,
+    token_has_frame: torch.Tensor,
+    atom_coordinate: torch.Tensor,
+    atom_to_token_idx: torch.Tensor,
+    atom_is_polymer: torch.Tensor,
+    N_recycle: int,
+    interested_atom_mask: Optional[torch.Tensor] = None,
+    elements_one_hot: Optional[torch.Tensor] = None,
+    mol_id: Optional[torch.Tensor] = None,
+    return_full_data: bool = False,
+) -> tuple[list[dict], list[dict]]:
+    """
+    Compute full data and summary confidence scores for the given inputs.
+
+    Args:
+        configs: Configuration object.
+        pae_logits (torch.Tensor): Logits for PAE (Predicted Aligned Error).
+        plddt_logits (torch.Tensor): Logits for pLDDT (Predicted Local Distance Difference Test).
+        pde_logits (torch.Tensor): Logits for PDE (Predicted Distance Error).
+        contact_probs (torch.Tensor): Contact probabilities.
+        token_asym_id (torch.Tensor): Asymmetric ID for tokens.
+        token_has_frame (torch.Tensor): Indicator for tokens having a frame.
+        atom_coordinate (torch.Tensor): Atom coordinates.
+        atom_to_token_idx (torch.Tensor): Mapping from atoms to tokens.
+        atom_is_polymer (torch.Tensor): Indicator for atoms being part of a polymer.
+        N_recycle (int): Number of recycles.
+        interested_atom_mask (Optional[torch.Tensor]): Mask for interested atoms. Defaults to None.
+        elements_one_hot (Optional[torch.Tensor]): One-hot encoding for elements. Defaults to None.
+        mol_id (Optional[torch.Tensor]): Molecular ID. Defaults to None.
+        return_full_data (bool): Whether to return full data. Defaults to False.
+
+    Returns:
+        tuple[list[dict], list[dict]]:
+            - summary_confidence: List of dictionaries containing summary confidence scores.
+            - full_data: List of dictionaries containing full data if `return_full_data` is True.
+    """
+    atom_is_ligand = (1 - atom_is_polymer).long()
+    token_is_ligand = torch.zeros_like(token_asym_id).scatter_add(
+        0, atom_to_token_idx, atom_is_ligand
+    )
+    token_is_ligand = token_is_ligand > 0
+
+    full_data = {}
+    full_data["atom_plddt"] = logits_to_score(
+        plddt_logits, **get_bin_params(configs.loss.plddt)
+    )  # [N_s, N_atom]
+    # Cpu offload for saving cuda memory
+    pde_logits = pde_logits.to(plddt_logits.device)
+    full_data["token_pair_pde"] = logits_to_score(
+        pde_logits, **get_bin_params(configs.loss.pde)
+    )  # [N_s, N_token, N_token]
+    del pde_logits
+    full_data["contact_probs"] = contact_probs.clone()  # [N_token, N_token]
+    pae_logits = pae_logits.to(plddt_logits.device)
+    full_data["token_pair_pae"], pae_prob = logits_to_score(
+        pae_logits, **get_bin_params(configs.loss.pae), return_prob=True
+    )  # [N_s, N_token, N_token]
+    del pae_logits
+
+    summary_confidence = {}
+    summary_confidence["plddt"] = full_data["atom_plddt"].mean(dim=-1)  # [N_s, ]
+    summary_confidence["gpde"] = (
+        full_data["token_pair_pde"] * full_data["contact_probs"]
+    ).sum(dim=[-1, -2]) / full_data["contact_probs"].sum(dim=[-1, -2])
+
+    summary_confidence["ptm"] = calculate_ptm(
+        pae_prob, has_frame=token_has_frame, **get_bin_params(configs.loss.pae)
+    )  # [N_s, ]
+    summary_confidence["iptm"] = calculate_iptm(
+        pae_prob,
+        has_frame=token_has_frame,
+        asym_id=token_asym_id,
+        **get_bin_params(configs.loss.pae)
+    )  # [N_s, ]
+
+    del pae_prob
+    summary_confidence["has_clash"] = calculate_clash(
+        atom_coordinate,
+        token_asym_id,
+        atom_to_token_idx,
+        atom_is_polymer,
+        configs.metrics.clash.af3_clash_threshold,
+    )
+    summary_confidence["num_recycles"] = torch.tensor(
+        N_recycle, device=atom_coordinate.device
+    )
+    # TODO: disorder
+    summary_confidence["disorder"] = torch.zeros_like(summary_confidence["ptm"])
+
+    if interested_atom_mask is not None:
+        token_idx = atom_to_token_idx[interested_atom_mask[0].bool()].long()
+        asym_ids = token_asym_id[token_idx]
+        assert len(torch.unique(asym_ids)) == 1
+        interested_asym_id = asym_ids[0].item()
+        N_chains = token_asym_id.max().long().item() + 1
+        pb_ranking_score = summary_confidence["chain_pair_iptm_global"][
+            :, interested_asym_id, torch.arange(N_chains) != interested_asym_id
+        ]  # [N_s, N_chain - 1]
+        summary_confidence["pb_ranking_score"] = pb_ranking_score[:, 0]
+        if elements_one_hot is not None and mol_id is not None:
+            vdw_clash = calculate_vdw_clash(
+                pred_coordinate=atom_coordinate,
+                asym_id=token_asym_id,
+                mol_id=mol_id,
+                is_polymer=atom_is_polymer,
+                atom_token_idx=atom_to_token_idx,
+                elements_one_hot=elements_one_hot,
+                threshold=configs.metrics.clash.vdw_clash_threshold,
+            )
+            N_sample = atom_coordinate.shape[0]
+            vdw_clash_per_sample_flag = (
+                vdw_clash[:, interested_asym_id, :].reshape(N_sample, -1).max(dim=-1)[0]
+            )
+            summary_confidence["has_vdw_pl_clash"] = vdw_clash_per_sample_flag
+            summary_confidence["pb_ranking_score_vdw_penalized"] = (
+                summary_confidence["pb_ranking_score"] - 100 * vdw_clash_per_sample_flag
+            )
+
+    summary_confidence = break_down_to_per_sample_dict(
+        summary_confidence, shared_keys=["num_recycles"]
+    )
+    torch.cuda.empty_cache()
+    if return_full_data:
+        # save extra inputs that are used for computing summary_confidence
+        full_data["token_has_frame"] = token_has_frame.clone()
+        full_data["token_asym_id"] = token_asym_id.clone()
+        full_data["atom_to_token_idx"] = atom_to_token_idx.clone()
+        full_data["atom_is_polymer"] = atom_is_polymer.clone()
+        full_data["atom_coordinate"] = atom_coordinate.clone()
+
+        full_data = break_down_to_per_sample_dict(
+            full_data,
+            shared_keys=[
+                "contact_probs",
+                "token_has_frame",
+                "token_asym_id",
+                "atom_to_token_idx",
+                "atom_is_polymer",
+            ],
+        )
+        return summary_confidence, full_data
+    else:
+        return summary_confidence, [{}]
+
