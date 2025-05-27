@@ -17,9 +17,10 @@ import json
 import os
 import random
 import traceback
+import time
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional, Union, Mapping
 
 import numpy as np
 import pandas as pd
@@ -38,6 +39,10 @@ from protenix.utils.cropping import CropData
 from protenix.utils.file_io import read_indices_csv
 from protenix.utils.logger import get_logger
 from protenix.utils.torch_utils import dict_to_tensor
+
+from protenix.data.json_to_feature import SampleDictToFeatures
+from protenix.data.msa_featurizer import InferenceMSAFeaturizer
+
 
 logger = get_logger(__name__)
 
@@ -107,7 +112,7 @@ class BaseSingleDataset(Dataset):
 
         self.msa_featurizer = msa_featurizer
         self.template_featurizer = template_featurizer
-
+        
         # Read data
         self.indices_list = self.read_indices_list(indices_fpath)
 
@@ -780,6 +785,290 @@ class BaseSingleDataset(Dataset):
             features_dict["resolution"] = torch.tensor([-1.0])
         return features_dict, labels_dict, label_full_dict
 
+class SequenceClassificationDataset(Dataset):
+    def __init__(
+        self,
+        mmcif_dir: Union[str, Path],
+        bioassembly_dict_dir: Optional[Union[str, Path]],
+        indices_fpath: Union[str, Path],
+        cropping_configs: dict[str, Any],
+        msa_featurizer: Optional[MSAFeaturizer] = None,
+        template_featurizer: Optional[Any] = None,
+        name: str = None,
+        **kwargs,
+    ) -> None:
+        super(SequenceClassificationDataset, self).__init__()
+
+        # Configs
+        self.mmcif_dir = mmcif_dir
+        self.bioassembly_dict_dir = bioassembly_dict_dir
+        self.indices_fpath = indices_fpath
+        self.cropping_configs = cropping_configs
+        self.name = name
+        # General dataset configs
+        self.ref_pos_augment = kwargs.get("ref_pos_augment", True)
+        self.lig_atom_rename = kwargs.get("lig_atom_rename", False)
+        # self.reassign_continuous_chain_ids = kwargs.get(
+        #     "reassign_continuous_chain_ids", True 
+        # )
+        self.reassign_continuous_chain_ids = True
+        self.shuffle_mols = kwargs.get("shuffle_mols", False)
+        self.shuffle_sym_ids = kwargs.get("shuffle_sym_ids", False)
+
+        # Typically used for test sets
+        self.find_pocket = kwargs.get("find_pocket", False)
+        self.find_all_pockets = kwargs.get("find_all_pockets", False)  # for dev
+        self.find_eval_chain_interface = kwargs.get("find_eval_chain_interface", False)
+        self.group_by_pdb_id = kwargs.get("group_by_pdb_id", False)  # for test set
+        self.sort_by_n_token = kwargs.get("sort_by_n_token", False)
+
+        # Typically used for training set
+        self.random_sample_if_failed = kwargs.get("random_sample_if_failed", False)
+        self.use_reference_chains_only = kwargs.get("use_reference_chains_only", False)
+        self.is_distillation = kwargs.get("is_distillation", False)
+
+        # Configs for data filters
+        self.max_n_token = kwargs.get("max_n_token", -1)
+        self.pdb_list = kwargs.get("pdb_list", None)
+        if len(self.pdb_list) == 0:
+            self.pdb_list = None
+        # Used for removing rows in the indices list. Column names and excluded values are specified in this dict.
+        self.exclusion_dict = kwargs.get("exclusion", {})
+        self.limits = kwargs.get(
+            "limits", -1
+        )  # Limit number of indices rows, mainly for test
+
+        self.error_dir = kwargs.get("error_dir", None)
+        if self.error_dir is not None:
+            os.makedirs(self.error_dir, exist_ok=True)
+
+        self.msa_featurizer = msa_featurizer
+        self.template_featurizer = template_featurizer
+        self.dump_dir = kwargs.get("dump_dir", "./output")
+        self.use_msa = kwargs.get("use_msa", True)
+        self.precomputed_msa_dir = kwargs.get("precomputed_msa_dir", None)
+        self.msa_save_dir = kwargs.get("msa_save_dir", "./searched_msa")
+        self.msa_search_tool = kwargs.get("msa_search_tool", "jackhmmer")
+        self.msa_pairing_db = kwargs.get("msa_pairing_db", "uniprot")
+        self.msa_pairing_db_fpath = kwargs.get("msa_pairing_db_fpath", "/home/fs01/wc648/RoseTTAFold-All-Atom/uniprot/uniprot_sprot.fasta")
+        self.msa_non_pairing_db_fpath = kwargs.get("msa_non_pairing_db_fpath", "/home/fs01/wc648/RoseTTAFold-All-Atom/mgnify/mgy_clusters_2018_12.fa")
+        # Read data
+        self.indices_list = read_indices_csv(indices_fpath)
+        self.inputs = self.load_inputs(indices_fpath)
+
+    def load_inputs(self, indices_fpath: Union[str, Path]) -> list[dict]:
+        """
+        Reads and processes a list of indices from a CSV file.
+
+        Args:
+            indices_fpath: Path to the CSV file containing the indices.
+
+        Returns:
+            A List of dicts containing the processed indices.
+        """
+        indices_list = self.indices_list
+        num_data = len(indices_list)
+        logger.info(f"#Rows in indices list: {num_data}")
+        inputs = []
+        for idx in range(num_data):
+            #print(indices_list.iloc[idx])
+            input = {}
+            input["name"] = indices_list.iloc[idx]["name"]
+            input["model_seed"] = []
+            input["assembly_id"] = "1"
+            input["label"] = indices_list.iloc[idx]["label"]
+            sequence_list = indices_list.iloc[idx]["sequences"].split(":")
+            sequences = []
+            for j in range(len(sequence_list)):
+                chain_dict = {}
+                if len(sequence_list[j]) > 50:
+                    chain_dict["proteinChain"] = {
+                        "sequence": sequence_list[j],
+                        "count": 1,
+                        "msa": {
+                            "precomputed_msa_dir": os.path.join(self.precomputed_msa_dir, "1"),
+                            "search_tool": self.msa_search_tool,
+                            "pairing_db": self.msa_pairing_db,
+                            "pairing_db_fpath": self.msa_pairing_db_fpath,
+                            "non_pairing_db_fpath": self.msa_non_pairing_db_fpath,
+                            "msa_save_dir": self.msa_save_dir
+                        }
+                    }
+                else:
+                    chain_dict["proteinChain"] = {
+                        "sequence": sequence_list[j],
+                        "count": 1,
+                        "msa": {
+                            "precomputed_msa_dir": os.path.join(self.precomputed_msa_dir, "2"),
+                            "search_tool": self.msa_search_tool,
+                            "pairing_db": self.msa_pairing_db,
+                            "pairing_db_fpath": self.msa_pairing_db_fpath,
+                            "non_pairing_db_fpath": self.msa_non_pairing_db_fpath,
+                            "msa_save_dir": self.msa_save_dir
+                        }
+                    }
+                sequences.append(chain_dict)
+            input["sequences"] = sequences
+
+            inputs.append(input)
+        return inputs
+    
+    def process_one(
+        self,
+        single_sample_dict: Mapping[str, Any],
+    ) -> tuple[dict[str, torch.Tensor], AtomArray, dict[str, float]]:
+        """
+        Processes a single sample from the input JSON to generate features and statistics.
+
+        Args:
+            single_sample_dict: A dictionary containing the sample data.
+
+        Returns:
+            A tuple containing:
+                - A dictionary of features.
+                - An AtomArray object.
+                - A dictionary of time tracking statistics.
+        """
+        # general features
+        t0 = time.time()
+        sample2feat = SampleDictToFeatures(
+            single_sample_dict,
+        )
+        features_dict, atom_array, token_array = sample2feat.get_feature_dict()
+        
+        features_dict["distogram_rep_atom_mask"] = torch.Tensor(
+            atom_array.distogram_rep_atom_mask
+        ).long()
+        # add label info
+        
+        entity_poly_type = sample2feat.entity_poly_type
+        t1 = time.time()
+        #print('features_dict',features_dict)
+
+        # Msa features
+        entity_to_asym_id = DataPipeline.get_label_entity_id_to_asym_id_int(atom_array)
+        msa_features = (
+            InferenceMSAFeaturizer.make_msa_feature(
+                bioassembly=single_sample_dict["sequences"],
+                entity_to_asym_id=entity_to_asym_id,
+                token_array=token_array,
+                atom_array=atom_array,
+            )
+            if self.use_msa
+            else {}
+        )
+        # Make dummy features for not implemented features
+        dummy_feats = ["template"]
+        if len(msa_features) == 0:
+            dummy_feats.append("msa")
+        else:
+            msa_features = dict_to_tensor(msa_features)
+            features_dict.update(msa_features)
+        features_dict = make_dummy_feature(
+            features_dict=features_dict,
+            dummy_feats=dummy_feats,
+        )
+
+        # Transform to right data type
+        feat = data_type_transform(feat_or_label_dict=features_dict)
+
+        t2 = time.time()
+
+        data = {}
+        data["input_feature_dict"] = feat
+        data["label_dict"] = torch.tensor(int(single_sample_dict["label"])).long()
+        # Add dimension related items
+        N_token = feat["token_index"].shape[0]
+        N_atom = feat["atom_to_token_idx"].shape[0]
+        N_msa = feat["msa"].shape[0]
+
+        stats = {}
+        for mol_type in ["ligand", "protein", "dna", "rna"]:
+            mol_type_mask = feat[f"is_{mol_type}"].bool()
+            stats[f"{mol_type}/atom"] = int(mol_type_mask.sum(dim=-1).item())
+            stats[f"{mol_type}/token"] = len(
+                torch.unique(feat["atom_to_token_idx"][mol_type_mask])
+            )
+
+        N_asym = len(torch.unique(data["input_feature_dict"]["asym_id"]))
+        data.update(
+            {
+                "N_asym": torch.tensor([N_asym]),
+                "N_token": torch.tensor([N_token]),
+                "N_atom": torch.tensor([N_atom]),
+                "N_msa": torch.tensor([N_msa]),
+            }
+        )
+
+        def formatted_key(key):
+            type_, unit = key.split("/")
+            if type_ == "protein":
+                type_ = "prot"
+            elif type_ == "ligand":
+                type_ = "lig"
+            else:
+                pass
+            return f"N_{type_}_{unit}"
+
+        data.update(
+            {
+                formatted_key(k): torch.tensor([stats[k]])
+                for k in [
+                    "protein/atom",
+                    "ligand/atom",
+                    "dna/atom",
+                    "rna/atom",
+                    "protein/token",
+                    "ligand/token",
+                    "dna/token",
+                    "rna/token",
+                ]
+            }
+        )
+        data.update({"entity_poly_type": entity_poly_type})
+        t3 = time.time()
+        time_tracker = {
+            "crop": t1 - t0,
+            "featurizer": t2 - t1,
+            "added_feature": t3 - t2,
+        }
+
+        return data, atom_array, time_tracker
+
+    def __len__(self) -> int:
+        return len(self.inputs)
+    
+
+    def __getitem__(self, index: int) -> tuple[dict[str, torch.Tensor], AtomArray, str]:
+        # Try at most 10 times
+        idx = index
+        for _ in range(10):
+            try:
+                single_sample_dict = self.inputs[index]
+                sample_name = single_sample_dict["name"]
+                logger.info(f"Featurizing {sample_name}...")
+
+                data, atom_array, _ = self.process_one(
+                    single_sample_dict=single_sample_dict
+                )
+                error_message = ""
+            except Exception as e:
+                data, atom_array = {}, None
+                error_message = f"{e} at idx {idx}:\n{traceback.format_exc()}"
+                #self.save_error_data(idx, error_message)
+
+                if self.random_sample_if_failed:
+                    logger.exception(f"[skip data {idx}] {error_message}")
+                    # Random sample an index
+                    idx = random.choice(range(len(self.indices_list)))
+                    continue
+                else:
+                    raise Exception(e)
+            data["sample_name"] = single_sample_dict["name"]
+            data["sample_index"] = index
+            return data, atom_array, error_message  
+    
+    
 
 def get_msa_featurizer(configs, dataset_name: str, stage: str) -> Optional[Callable]:
     """
@@ -1071,23 +1360,43 @@ def get_datasets(
     )
     train_datasets = []
     datapoint_weights = []
-    for train_name in data_config.train_sets:
-        config_dict = data_config[train_name].to_dict()
-        dataset_param = _get_dataset_param(
-            config_dict, dataset_name=train_name, stage="train"
-        )
-        dataset_param["ref_pos_augment"] = data_config.get(
-            "train_ref_pos_augment", True
-        )
-        dataset_param["limits"] = data_config.get("limits", -1)
-        train_dataset = BaseSingleDataset(**dataset_param)
-        train_datasets.append(train_dataset)
-        datapoint_weights.append(
-            get_sample_weights(
-                **data_config[train_name]["sampler_configs"],
-                indices_df=train_dataset.indices_list,
+
+    if configs["classifier"]:
+        for train_name in data_config.train_sets:
+            config_dict = data_config[train_name].to_dict()
+            dataset_param = _get_dataset_param(
+                    config_dict, dataset_name=train_name, stage="train"
+                )
+            dataset_param["ref_pos_augment"] = data_config.get(
+                    "train_ref_pos_augment", True
+                )
+            dataset_param["limits"] = data_config.get("limits", -1)
+            train_dataset = SequenceClassificationDataset(**dataset_param)
+            train_datasets.append(train_dataset)
+            datapoint_weights.append(
+                    get_sample_weights(
+                        **data_config[train_name]["sampler_configs"],
+                        indices_df=train_dataset.indices_list,
+                    )
+                )
+    else:
+        for train_name in data_config.train_sets:
+            config_dict = data_config[train_name].to_dict()
+            dataset_param = _get_dataset_param(
+                config_dict, dataset_name=train_name, stage="train"
             )
-        )
+            dataset_param["ref_pos_augment"] = data_config.get(
+                "train_ref_pos_augment", True
+            )
+            dataset_param["limits"] = data_config.get("limits", -1)
+            train_dataset = BaseSingleDataset(**dataset_param)
+            train_datasets.append(train_dataset)
+            datapoint_weights.append(
+                get_sample_weights(
+                    **data_config[train_name]["sampler_configs"],
+                    indices_df=train_dataset.indices_list,
+                )
+            )
     train_dataset = WeightedMultiDataset(
         datasets=train_datasets,
         dataset_names=data_config.train_sets,
@@ -1097,12 +1406,23 @@ def get_datasets(
 
     test_datasets = {}
     test_sets = data_config.test_sets
-    for test_name in test_sets:
-        config_dict = data_config[test_name].to_dict()
-        dataset_param = _get_dataset_param(
-            config_dict, dataset_name=test_name, stage="test"
-        )
-        dataset_param["ref_pos_augment"] = data_config.get("test_ref_pos_augment", True)
-        test_dataset = BaseSingleDataset(**dataset_param)
-        test_datasets[test_name] = test_dataset
+    if configs["classifier"]:
+        for test_name in test_sets:
+            config_dict = data_config[test_name].to_dict()
+            dataset_param = _get_dataset_param(
+                config_dict, dataset_name=test_name, stage="test"
+            )
+            dataset_param["ref_pos_augment"] = data_config.get("test_ref_pos_augment", True)
+            test_dataset = SequenceClassificationDataset(**dataset_param)
+            test_datasets[test_name] = test_dataset
+    else:
+        for test_name in test_sets:
+            config_dict = data_config[test_name].to_dict()
+            dataset_param = _get_dataset_param(
+                config_dict, dataset_name=test_name, stage="test"
+            )
+            dataset_param["ref_pos_augment"] = data_config.get("test_ref_pos_augment", True)
+            test_dataset = BaseSingleDataset(**dataset_param)
+            test_datasets[test_name] = test_dataset
+
     return train_dataset, test_datasets

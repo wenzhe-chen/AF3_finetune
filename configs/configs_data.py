@@ -129,6 +129,60 @@ data_configs = {
         },
         **deepcopy(default_test_configs),
     },
+    "classifier_table": {
+       
+        "base_info": {
+            "mmcif_dir": os.path.join(DATA_ROOT_DIR, "mmcif"),
+            "bioassembly_dict_dir": os.path.join(DATA_ROOT_DIR, "mmcif_bioassembly"),
+            "indices_fpath": "/home/fs01/wc648/protenix/examples/2K_screen.csv",
+            "pdb_list": "",
+            "random_sample_if_failed": True,
+            "max_n_token": -1,  # can be used for removing data with too many tokens.
+            "use_reference_chains_only": False,
+            "exclusion": {  # do not sample the data based on ions.
+                "mol_1_type": ListValue(["ions"]),
+                "mol_2_type": ListValue(["ions"]),
+            },
+            "use_msa": True,
+            "dump_dir": "./output",
+            "precomputed_msa_dir": "./searched_msa",
+            "msa_save_dir": "./searched_msa",
+            "msa_search_tool": "jackhmmer",
+            "msa_pairing_db": "uniprot",
+            "msa_pairing_db_fpath": "/home/fs01/wc648/RoseTTAFold-All-Atom/uniprot/uniprot_sprot.fasta",
+            "msa_non_pairing_db_fpath": "/home/fs01/wc648/RoseTTAFold-All-Atom/mgnify/mgy_clusters_2018_12.fa"
+        },
+        **deepcopy(default_weighted_pdb_configs),
+         "sampler_configs": {
+        "sampler_type": "uniform",
+        },
+    },
+    "classifier_table_test": {
+        "base_info": {
+            "mmcif_dir": os.path.join(DATA_ROOT_DIR, "mmcif"),
+            "bioassembly_dict_dir": os.path.join(DATA_ROOT_DIR, "mmcif_bioassembly"),
+            "indices_fpath": "/home/fs01/wc648/protenix/examples/2K_screen.csv",
+            "pdb_list": "",
+            "random_sample_if_failed": True,
+            "max_n_token": GlobalConfigValue("test_max_n_token"),  # filter data, can be used for removing data with too many tokens.
+            "use_reference_chains_only": False,
+            "find_pocket": True,
+            "find_all_pockets": False,
+            "exclusion": {  # do not sample the data based on ions.
+                "mol_1_type": ListValue(["ions"]),
+                "mol_2_type": ListValue(["ions"]),
+            },
+            "use_msa": True,
+            "dump_dir": "./output",
+            "precomputed_msa_dir": "./searched_msa",
+            "msa_save_dir": "./searched_msa",
+            "msa_search_tool": "jackhmmer",
+            "msa_pairing_db": "uniprot",
+            "msa_pairing_db_fpath": "/home/fs01/wc648/RoseTTAFold-All-Atom/uniprot/uniprot_sprot.fasta",
+            "msa_non_pairing_db_fpath": "/home/fs01/wc648/RoseTTAFold-All-Atom/mgnify/mgy_clusters_2018_12.fa"
+        },
+        **deepcopy(default_weighted_pdb_configs),
+    },
     "msa": {
         "enable": True,
         "enable_rna_msa": False,

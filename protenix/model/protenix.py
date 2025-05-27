@@ -562,7 +562,7 @@ class Protenix(nn.Module):
             confidence_output = self.confidence_classifier(confidence_scores)
 
             # Store confidence-based classification output
-            pred_dict['binder'] = torch.round(torch.sigmoid(confidence_output))
+            pred_dict['binder'] = torch.sigmoid(confidence_output)
             print(confidence_output, pred_dict['binder'])
 
             for i in range (len(pred_dict["summary_confidence"])):
@@ -581,7 +581,7 @@ class Protenix(nn.Module):
         symmetric_permutation: SymmetricPermutation,
         inplace_safe: bool = False,
         chunk_size: Optional[int] = None,
-    ) -> tuple[dict[str, torch.Tensor], dict[str, Any], dict[str, Any]]:
+     ) -> tuple[dict[str, torch.Tensor], dict[str, Any], dict[str, Any]]:
         """
         Main training loop for the Alphafold3 model.
 
@@ -638,16 +638,17 @@ class Protenix(nn.Module):
             coordinate_mini.detach_()
             pred_dict["coordinate_mini"] = coordinate_mini
 
-            # Permute ground truth to match mini-rollout prediction
-            label_dict, perm_log_dict = (
-                symmetric_permutation.permute_label_to_match_mini_rollout(
-                    coordinate_mini,
-                    input_feature_dict,
-                    label_dict,
-                    label_full_dict,
+            if not self.configs['classifier']:
+                # Permute ground truth to match mini-rollout prediction
+                label_dict, perm_log_dict = (
+                    symmetric_permutation.permute_label_to_match_mini_rollout(
+                        coordinate_mini,
+                        input_feature_dict,
+                        label_dict,
+                        label_full_dict,
+                    )
                 )
-            )
-            log_dict.update(perm_log_dict)
+                log_dict.update(perm_log_dict)
 
         # Confidence: use mini-rollout prediction, and detach token embeddings
         plddt_pred, pae_pred, pde_pred, resolved_pred = self.run_confidence_head(
@@ -697,7 +698,8 @@ class Protenix(nn.Module):
             if label_dict is None:
                 interested_atom_mask = None
             else:
-                interested_atom_mask = label_dict.get("interested_ligand_mask", None)
+                #interested_atom_mask = label_dict.get("interested_ligand_mask", None)
+                interested_atom_mask = None
 
             summary_confidence, full_data = sample_confidence.compute_confidence_summary(
                 configs=self.configs,
@@ -753,7 +755,7 @@ class Protenix(nn.Module):
             confidence_output = self.confidence_classifier(confidence_scores)
 
             # Store confidence-based classification output
-            pred_dict['binder'] = torch.round(torch.sigmoid(confidence_output))
+            pred_dict['binder'] = torch.sigmoid(confidence_output)
             print(confidence_output, pred_dict['binder'])
                 
 
@@ -761,40 +763,41 @@ class Protenix(nn.Module):
             # Skip diffusion loss and distogram loss. Return now.
             return pred_dict, label_dict, log_dict
 
-        # Denoising: use permuted coords to generate noisy samples and perform denoising
-        # x_denoised: [..., N_sample, N_atom, 3]
-        # x_noise_level: [..., N_sample]
-        N_sample = self.diffusion_batch_size
-        _, x_denoised, x_noise_level = autocasting_disable_decorator(
-            self.configs.skip_amp.sample_diffusion_training
-        )(sample_diffusion_training)(
-            noise_sampler=self.train_noise_sampler,
-            denoise_net=self.diffusion_module,
-            label_dict=label_dict,
-            input_feature_dict=input_feature_dict,
-            s_inputs=s_inputs,
-            s_trunk=s,
-            z_trunk=z,
-            N_sample=N_sample,
-            diffusion_chunk_size=self.configs.diffusion_chunk_size,
-        )
-        pred_dict.update(
-            {
-                "distogram": self.distogram_head(z),
-                # [..., N_sample=48, N_atom, 3]: diffusion loss
-                "coordinate": x_denoised,
-                "noise_level": x_noise_level,
-            }
-        )
-
-        # Permute symmetric atom/chain in each sample to match true structure
-        # Note: currently chains cannot be permuted since label is cropped
-        pred_dict, perm_log_dict, _, _ = (
-            symmetric_permutation.permute_diffusion_sample_to_match_label(
-                input_feature_dict, pred_dict, label_dict, stage="train"
+        if not self.configs['classifier']:
+            # Denoising: use permuted coords to generate noisy samples and perform denoising
+            # x_denoised: [..., N_sample, N_atom, 3]
+            # x_noise_level: [..., N_sample]
+            N_sample = self.diffusion_batch_size
+            _, x_denoised, x_noise_level = autocasting_disable_decorator(
+                self.configs.skip_amp.sample_diffusion_training
+            )(sample_diffusion_training)(
+                noise_sampler=self.train_noise_sampler,
+                denoise_net=self.diffusion_module,
+                label_dict=label_dict,
+                input_feature_dict=input_feature_dict,
+                s_inputs=s_inputs,
+                s_trunk=s,
+                z_trunk=z,
+                N_sample=N_sample,
+                diffusion_chunk_size=self.configs.diffusion_chunk_size,
             )
-        )
-        log_dict.update(perm_log_dict)
+            pred_dict.update(
+                {
+                    "distogram": self.distogram_head(z),
+                    # [..., N_sample=48, N_atom, 3]: diffusion loss
+                    "coordinate": x_denoised,
+                    "noise_level": x_noise_level,
+                }
+            )
+
+            # Permute symmetric atom/chain in each sample to match true structure
+            # Note: currently chains cannot be permuted since label is cropped
+            pred_dict, perm_log_dict, _, _ = (
+                symmetric_permutation.permute_diffusion_sample_to_match_label(
+                    input_feature_dict, pred_dict, label_dict, stage="train"
+                )
+            )
+            log_dict.update(perm_log_dict)
 
         return pred_dict, label_dict, log_dict
 
@@ -833,7 +836,7 @@ class Protenix(nn.Module):
             assert self.training
             assert label_dict is not None
             assert symmetric_permutation is not None
-
+            
             pred_dict, label_dict, log_dict = self.main_train_loop(
                 input_feature_dict=input_feature_dict,
                 label_full_dict=label_full_dict,
@@ -841,7 +844,7 @@ class Protenix(nn.Module):
                 N_cycle=N_cycle,
                 symmetric_permutation=symmetric_permutation,
                 inplace_safe=inplace_safe,
-                chunk_size=chunk_size,
+                chunk_size=chunk_size, 
             )
         elif mode == "inference":
             pred_dict, log_dict, time_tracker = self.main_inference_loop(
@@ -857,11 +860,12 @@ class Protenix(nn.Module):
             log_dict.update({"time": time_tracker})
         elif mode == "eval":
             if label_dict is not None:
-                assert (
-                    label_dict["coordinate"].size()
-                    == label_full_dict["coordinate"].size()
-                )
-                label_dict.update(label_full_dict)
+                if not self.configs['classifier']:
+                    assert (
+                        label_dict["coordinate"].size()
+                        == label_full_dict["coordinate"].size()
+                    )
+                    label_dict.update(label_full_dict)
 
             pred_dict, log_dict, time_tracker = self.main_inference_loop(
                 input_feature_dict=input_feature_dict,
