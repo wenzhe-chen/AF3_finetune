@@ -531,10 +531,10 @@ class Protenix(nn.Module):
 
             keys = [
                 'plddt', 'gpde', 'ptm', 'iptm', 
-                #'chain_ptm', 'chain_iptm', 
-                #'chain_pair_iptm', 'chain_pair_iptm_global', 
-                #'chain_plddt', 'chain_pair_plddt', 
-                'has_clash', #'disorder'
+                'chain_ptm', 'chain_iptm', 
+                'chain_pair_iptm', 'chain_pair_iptm_global', 
+                'chain_plddt', 'chain_pair_plddt', 
+                'has_clash', 'disorder'
             ]
 
             # For each sample in summary_confidence, flatten and concatenate all specified keys.
@@ -703,7 +703,7 @@ class Protenix(nn.Module):
                 #interested_atom_mask = label_dict.get("interested_ligand_mask", None)
                 interested_atom_mask = None
 
-            summary_confidence, full_data = sample_confidence.compute_confidence_summary(
+            summary_confidence, full_data = sample_confidence.compute_full_data_and_summary(
                 configs=self.configs,
                 pae_logits=pred_dict["pae"],
                 plddt_logits=pred_dict["plddt"],
@@ -722,12 +722,15 @@ class Protenix(nn.Module):
                 mol_id=input_feature_dict["mol_id"],
                 elements_one_hot=input_feature_dict["ref_element"]
                 )
+            
+            print('summary_confidence:',summary_confidence[0].keys())
+
             keys = [
                 'plddt', 'gpde', 'ptm', 'iptm', 
-                #'chain_ptm', 'chain_iptm', 
-                #'chain_pair_iptm', 'chain_pair_iptm_global', 
-                #'chain_plddt', 'chain_pair_plddt', 
-                'has_clash', #'disorder'
+                'chain_ptm', 'chain_iptm', 
+                'chain_pair_iptm', 'chain_pair_iptm_global', 
+                'chain_plddt', 'chain_pair_plddt', 
+                'has_clash', 'disorder'
             ]
 
             # For each sample in summary_confidence, flatten and concatenate all specified keys.
