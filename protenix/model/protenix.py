@@ -475,17 +475,18 @@ class Protenix(nn.Module):
         time_tracker.update({"confidence": step_confidence - step_diffusion})
         time_tracker.update({"model_forward": time.time() - step_st})
 
-        # Permutation: when label is given, permute coordinates and other heads
-        if label_dict is not None and symmetric_permutation is not None:
-            pred_dict, log_dict = symmetric_permutation.permute_inference_pred_dict(
-                input_feature_dict=input_feature_dict,
-                pred_dict=pred_dict,
-                label_dict=label_dict,
-                permute_by_pocket=("pocket_mask" in label_dict)
-                and ("interested_ligand_mask" in label_dict),
-            )
-            last_step_seconds = step_confidence
-            time_tracker.update({"permutation": time.time() - last_step_seconds})
+        if not self.configs['classifier']:
+            # Permutation: when label is given, permute coordinates and other heads
+            if label_dict is not None and symmetric_permutation is not None:
+                pred_dict, log_dict = symmetric_permutation.permute_inference_pred_dict(
+                    input_feature_dict=input_feature_dict,
+                    pred_dict=pred_dict,
+                    label_dict=label_dict,
+                    permute_by_pocket=("pocket_mask" in label_dict)
+                    and ("interested_ligand_mask" in label_dict),
+                )
+                last_step_seconds = step_confidence
+                time_tracker.update({"permutation": time.time() - last_step_seconds})
 
         # Summary Confidence & Full Data
         # Computed after coordinates and logits are permuted
@@ -493,7 +494,8 @@ class Protenix(nn.Module):
         if label_dict is None:
             interested_atom_mask = None
         else:
-            interested_atom_mask = label_dict.get("interested_ligand_mask", None)
+            interested_atom_mask = None
+            #interested_atom_mask = label_dict.get("interested_ligand_mask", None)
         pred_dict["summary_confidence"], pred_dict["full_data"] = (
             sample_confidence.compute_full_data_and_summary(
                 configs=self.configs,

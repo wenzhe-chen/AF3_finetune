@@ -25,7 +25,7 @@ python3 ./runner/finetune.py \
 --use_deepspeed_evo_attention true \
 --use_wandb true \
 --diffusion_batch_size 48 \
---eval_interval 400 \
+--eval_interval 5 \
 --log_interval 50 \
 --checkpoint_interval 400 \
 --ema_decay 0.999 \

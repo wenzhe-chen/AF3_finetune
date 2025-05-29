@@ -365,7 +365,7 @@ class AF3Trainer(object):
             total_batch_num = len(test_dl)
             for index, batch in enumerate(tqdm(test_dl)):
                 batch = to_device(batch[0], self.device)
-                pid = batch["basic"]["pdb_id"]
+                pid = batch["sample_name"]
 
                 if index + 1 == total_batch_num and DIST_WRAPPER.world_size > 1:
                     # Gather all pids across ranks for avoiding duplicated evaluations when drop_last = False
@@ -384,12 +384,13 @@ class AF3Trainer(object):
                     batch, _ = self.model_forward(batch, mode=mode)
                     # Loss forward
                     loss, loss_dict,batch = self.get_loss(batch, mode="eval")
+                    if not self.configs['classifier']:
                     # lDDT metrics
-                    lddt_dict = self.get_metrics(batch)
-                    lddt_metrics = self.aggregate_metrics(lddt_dict, batch)
-                    simple_metrics.update(
-                        {k: v for k, v in lddt_metrics.items() if "diff" not in k}
-                    )
+                        lddt_dict = self.get_metrics(batch)
+                        lddt_metrics = self.aggregate_metrics(lddt_dict, batch)
+                        simple_metrics.update(
+                            {k: v for k, v in lddt_metrics.items() if "diff" not in k}
+                        )
                     simple_metrics.update(loss_dict)
 
                 # Metrics
