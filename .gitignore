@@ -140,3 +140,5 @@ af3-dev/
 *.log
 hh-suite/
 cutlass/
+
+*.sbatch

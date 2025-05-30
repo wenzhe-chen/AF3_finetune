@@ -27,6 +27,7 @@ basic_configs = {
     "run_name": RequiredValue(str),
     "base_dir": RequiredValue(str),
     # training
+    "train_classifier_only": RequiredValue(bool),
     "eval_interval": RequiredValue(int),
     "log_interval": RequiredValue(int),
     "checkpoint_interval": -1,
@@ -75,7 +76,7 @@ optim_configs = {
         "beta2": 0.95,
         "weight_decay": 1e-8,
         "lr": GlobalConfigValue("lr"),
-        "use_adamw": False,
+        "use_adamw": True,
     },
     # Optim - LRScheduler
     "af3_lr_scheduler": {
@@ -240,9 +241,10 @@ model_configs = {
             "no_bins": GlobalConfigValue("no_bins"),
         },
         "confidence_classifier":{
-            'use_confidence': True,  # Whether to use the confidence scores in classification
-            'hidden_units': 16,  # Example: number of hidden units in the MLP classifier
-            'output_units': 1,  #
+            'use_intersted_atom_mask': False,  # Whether to use the confidence scores in classification
+            'hidden_units': 64,  # Example: number of hidden units in the MLP classifier
+            'output_units': 1, # 0: non-binder, 1: binder
+            'number_of_chains': 2,  
         }
     },
 }

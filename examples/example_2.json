@@ -1,0 +1,29 @@
+[{
+    "sequences": [
+        {
+            "proteinChain": {
+                "sequence": "MAEDSESAASQQSLELDDQDTCGIDGDNEEETEHAKGSPGGYLGAKKKKKKQKRKKEKPNSGGTKSDSASDSQEIKIQQPSKNPSVPMQKLQDIQRAMELLSACQGPARNIDEAAKHRYQFWDTQPVPKLDEVITSHGAIEPDKDNVRQEPYSLPQGFMWDTLDLSDAEVLKELYTLLNENYVEDDDNMFRFDYSPEFLLWALRPPGWLLQWHCGVRVSSNKKLVGFISAIPANIRIYDSVKKMVEINFLCVHKKLRSKRVAPVLIREITRRVNLEGIFQAVYTAGVVLPKPIATCRYWHRSLNPRKLVEVKFSHLSRNMTLQRTMKLYRLPDVTKTSGLRPMEPKDIKSVRELINTYLKQFHLAPVMDEEEVAHWFLPREHIIDTFVVESPNGKLTDFLSFYTLPSTVMHHPAHKSLKAAYSFYNIHTETPLLDLMSDALILAKSKGFDVFNALDLMENKTFLEKLKFGIGDGNLQYYLYNWRCPGTDSEKVGLVLQ",
+                "count": 1,
+                "msa": {
+                    "precomputed_msa_dir": "/home/fs01/wc648/protenix/searched_msa/1",
+                    "pairing_db": "uniref100"
+                }
+            }
+        },
+        {
+            "proteinChain": {
+                "sequence": "GAAAGRSP",
+                "count": 1,
+                "msa": {
+                    "precomputed_msa_dir": "/home/fs01/wc648/protenix/searched_msa/2",
+                    "pairing_db": "uniref100"
+                }
+            }
+            
+        }
+    ],
+    "modelSeeds": [],
+    "assembly_id": "1",
+    "name": "NMT2_GAAAGRSP"
+}]
+

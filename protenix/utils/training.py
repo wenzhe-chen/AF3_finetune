@@ -41,8 +41,12 @@ def get_adamw(
     """
     # start with all of the candidate parameters
     param_dict = {pn: p for pn, p in model.named_parameters()}
+    #print('all params', param_dict.keys())
     # filter out those that do not require grad
     param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad}
+    no_grad_param_dict = {pn: p for pn, p in model.named_parameters() if not p.requires_grad}
+    print('filtered params', param_dict.keys())
+    #print('no grad params', no_grad_param_dict.keys())
     # create optim groups. Any parameters that is 2D will be weight decayed, otherwise no.
     # i.e. all weight tensors in matmuls + embeddings decay, all biases and layernorms don't.
     decay_params = [p for n, p in param_dict.items() if p.dim() >= 2]

@@ -84,8 +84,8 @@ class Protenix(nn.Module):
         self.distogram_head = DistogramHead(**configs.model.distogram_head)
         self.confidence_head = ConfidenceHead(**configs.model.confidence_head)
         #print("Configs:", self.configs)
-        #if self.configs['classifier']:
-        #    self.confidence_classifier = ConfidenceClassifier(**configs.model.confidence_classifier)
+        if self.configs['classifier']:
+            self.confidence_classifier = ConfidenceClassifier(**configs.model.confidence_classifier)
 
         self.c_s, self.c_z, self.c_s_inputs = (
             configs.c_s,
@@ -496,6 +496,7 @@ class Protenix(nn.Module):
         else:
             interested_atom_mask = None
             #interested_atom_mask = label_dict.get("interested_ligand_mask", None)
+
         pred_dict["summary_confidence"], pred_dict["full_data"] = (
             sample_confidence.compute_full_data_and_summary(
                 configs=self.configs,
@@ -524,7 +525,7 @@ class Protenix(nn.Module):
             )
         )
 
-        #print('summary_confidence:',pred_dict["summary_confidence"],
+        #print('summary_confidence:',pred_dict["summary_confidence"])
         #    'full_data_shape:',pred_dict["full_data"])
 
         if self.configs['classifier']:
@@ -546,31 +547,22 @@ class Protenix(nn.Module):
                 )
                 for sample in pred_dict["summary_confidence"]
             ]
-
+            
             # Stack all sample feature vectors into a single tensor with shape [5, feature_dim]
             confidence_scores = torch.stack(features, dim=0)
             print('confidence_scores_shape:',confidence_scores.shape)
 
-            # Ensure classifier input dimension matches
-            if not hasattr(self, 'confidence_classifier'):
-                input_dim = confidence_scores.shape[-1]  # 4 * N_token
-                self.confidence_classifier = ConfidenceClassifier(
-                    input_dim=input_dim,
-                    hidden_units=self.configs['model']['confidence_classifier']['hidden_units'],
-                    output_units=self.configs['model']['confidence_classifier']['output_units']
-                ).to(confidence_scores.device)
-
             # Forward pass on GPU
-            confidence_output = self.confidence_classifier(confidence_scores)
+            confidence_output = self.run_confidence_classifier(confidence_scores)
 
             # Store confidence-based classification output
-            pred_dict['binder'] = torch.sigmoid(confidence_output)
-            print(confidence_output, pred_dict['binder'])
+            pred_dict['binder'] = confidence_output
+            print('confidence_output',confidence_output, 'pred_dict[binder]', pred_dict['binder'])
 
-            for i in range (len(pred_dict["summary_confidence"])):
-                pred_dict["summary_confidence"][i]['binder']= pred_dict['binder'][i]
+            # for i in range (len(pred_dict["summary_confidence"])):
+            #     pred_dict["summary_confidence"][i]['binder']= pred_dict['binder'][i]
             
-            print(pred_dict["summary_confidence"][0])
+            # #print(pred_dict["summary_confidence"][0])
 
         return pred_dict, log_dict, time_tracker
 
@@ -676,7 +668,7 @@ class Protenix(nn.Module):
             }
         )
 
-        print('plddt.shape',pred_dict['plddt'].shape)
+        #print('plddt.shape',pred_dict['plddt'].shape)
         #print('asym_id',input_feature_dict["asym_id"])
 
         if self.configs['classifier']:
@@ -723,7 +715,7 @@ class Protenix(nn.Module):
                 elements_one_hot=input_feature_dict["ref_element"]
                 )
             
-            print('summary_confidence:',summary_confidence[0].keys())
+            #print('summary_confidence:',summary_confidence)
 
             keys = [
                 'plddt', 'gpde', 'ptm', 'iptm', 
@@ -742,26 +734,16 @@ class Protenix(nn.Module):
                 )
                 for sample in summary_confidence
             ]
-
             # Stack all sample feature vectors into a single tensor with shape [5, feature_dim]
             confidence_scores = torch.stack(features, dim=0)
             print('confidence_scores_shape:',confidence_scores.shape)
 
-            # Ensure classifier input dimension matches
-            if not hasattr(self, 'confidence_classifier'):
-                input_dim = confidence_scores.shape[-1]  # 4 * N_token
-                self.confidence_classifier = ConfidenceClassifier(
-                    input_dim=input_dim,
-                    hidden_units=self.configs['model']['confidence_classifier']['hidden_units'],
-                    output_units=self.configs['model']['confidence_classifier']['output_units']
-                ).to(confidence_scores.device)
-
             # Forward pass on GPU
-            confidence_output = self.confidence_classifier(confidence_scores)
+            confidence_output = self.run_confidence_classifier(confidence_scores)
 
             # Store confidence-based classification output
-            pred_dict['binder'] = torch.sigmoid(confidence_output)
-            print(confidence_output, pred_dict['binder'])
+            pred_dict['binder'] = confidence_output
+            print('confidence_output',confidence_output, 'pred_dict[binder]', pred_dict['binder'])
                 
 
         if self.train_confidence_only:

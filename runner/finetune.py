@@ -164,8 +164,20 @@ class AF3Trainer(object):
         )
         self.lddt_metrics = LDDTMetrics(self.configs)
 
+    def set_trainable(self, model, module_names, trainable):
+        for name, param in model.named_parameters():
+            if any(m in name for m in module_names):
+                param.requires_grad = trainable
+            else:
+                param.requires_grad = not trainable
+
     def init_model(self):
         self.raw_model = Protenix(self.configs).to(self.device)
+        if self.configs['train_classifier_only']:
+            self.set_trainable(self.raw_model, ['classifier'], True)
+        #grad_param_dict = {pn: p for pn, p in self.raw_model.named_parameters() if p.requires_grad}
+        #print('grad params', grad_param_dict.keys())
+
         self.use_ddp = False
         if DIST_WRAPPER.world_size > 1:
             self.print(f"Using DDP")
@@ -245,10 +257,13 @@ class AF3Trainer(object):
                     k[len("module.") :]: v for k, v in checkpoint["model"].items()
                 }
 
-            self.model.load_state_dict(
+            missing_keys, unexpected_keys = self.model.load_state_dict(
                 state_dict=checkpoint["model"],
                 strict=self.configs.load_strict,
             )
+            print('missing_keys',missing_keys)
+            print('unexpected_keys',unexpected_keys)
+
             if not load_params_only:
                 if not skip_load_optimizer:
                     self.print(f"Loading optimizer state")
@@ -564,7 +579,6 @@ class AF3Trainer(object):
             if self.step >= self.configs.max_steps:
                 break
 
-
 def main():
     LOG_FORMAT = "%(asctime)s,%(msecs)-3d %(levelname)-8s [%(filename)s:%(lineno)s %(funcName)s] %(message)s"
     logging.basicConfig(
@@ -589,3 +603,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
