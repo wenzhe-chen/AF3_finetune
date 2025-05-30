@@ -142,3 +142,5 @@ hh-suite/
 cutlass/
 
 *.sbatch
+*.err
+*.out 
