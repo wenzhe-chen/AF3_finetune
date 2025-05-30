@@ -17378,4 +17378,58 @@ Loading extension module evoformer_attn...
 2025-05-30 11:03:25,069 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GQDRGFGF...
 
 [step 5538: 338/400] :  85%|████████▍ | 339/400 [24:36<03:55,  3.85s/it][A
-[step 5539: 339/400] :  85%|████████▍ | 339/400 [24:36<03:55,  3.85s/it][A
+[step 5539: 339/400] :  85%|████████▍ | 339/400 [24:36<03:55,  3.85s/it][A2025-05-30 11:03:29,842 [/home/fs01/wc648/protenix/./runner/finetune.py:303] INFO root: self.step 5539, self.iters_to_accumulate: 1
+2025-05-30 11:03:30,028 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GCSAKARW...
+
+[step 5539: 339/400] :  85%|████████▌ | 340/400 [24:41<04:10,  4.17s/it][A
+[step 5540: 340/400] :  85%|████████▌ | 340/400 [24:41<04:10,  4.17s/it][A2025-05-30 11:03:35,859 [/home/fs01/wc648/protenix/./runner/finetune.py:303] INFO root: self.step 5540, self.iters_to_accumulate: 1
+2025-05-30 11:03:36,039 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GNSYAGQL...
+
+[step 5540: 340/400] :  85%|████████▌ | 341/400 [24:47<04:37,  4.71s/it][A
+[step 5541: 341/400] :  85%|████████▌ | 341/400 [24:47<04:37,  4.71s/it][A2025-05-30 11:03:41,874 [/home/fs01/wc648/protenix/./runner/finetune.py:303] INFO root: self.step 5541, self.iters_to_accumulate: 1
+2025-05-30 11:03:42,055 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GSCFSLQV...
+
+[step 5541: 341/400] :  86%|████████▌ | 342/400 [24:53<04:55,  5.10s/it][A
+[step 5542: 342/400] :  86%|████████▌ | 342/400 [24:53<04:55,  5.10s/it][A2025-05-30 11:03:46,752 [/home/fs01/wc648/protenix/./runner/finetune.py:303] INFO root: self.step 5542, self.iters_to_accumulate: 1
+2025-05-30 11:03:46,940 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GSSMGFLG...
+
+[step 5542: 342/400] :  86%|████████▌ | 343/400 [24:58<04:47,  5.05s/it][A
+[step 5543: 343/400] :  86%|████████▌ | 343/400 [24:58<04:47,  5.05s/it][A2025-05-30 11:03:51,639 [/home/fs01/wc648/protenix/./runner/finetune.py:303] INFO root: self.step 5543, self.iters_to_accumulate: 1
+2025-05-30 11:03:51,833 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GNHFLTLS...
+
+[step 5543: 343/400] :  86%|████████▌ | 344/400 [25:03<04:40,  5.02s/it][A
+[step 5544: 344/400] :  86%|████████▌ | 344/400 [25:03<04:40,  5.02s/it][A2025-05-30 11:03:57,712 [/home/fs01/wc648/protenix/./runner/finetune.py:303] INFO root: self.step 5544, self.iters_to_accumulate: 1
+2025-05-30 11:03:57,911 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GCRAASGL...
+
+[step 5544: 344/400] :  86%|████████▋ | 345/400 [25:09<04:53,  5.34s/it][A
+[step 5545: 345/400] :  86%|████████▋ | 345/400 [25:09<04:53,  5.34s/it][A2025-05-30 11:04:03,761 [/home/fs01/wc648/protenix/./runner/finetune.py:303] INFO root: self.step 5545, self.iters_to_accumulate: 1
+2025-05-30 11:04:03,951 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GKIFSWLV...
+
+[step 5545: 345/400] :  86%|████████▋ | 346/400 [25:15<04:58,  5.53s/it][A
+[step 5546: 346/400] :  86%|████████▋ | 346/400 [25:15<04:58,  5.53s/it][A2025-05-30 11:04:07,530 [/home/fs01/wc648/protenix/./runner/finetune.py:303] INFO root: self.step 5546, self.iters_to_accumulate: 1
+2025-05-30 11:04:07,716 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GICSSSES...
+
+[step 5546: 346/400] :  87%|████████▋ | 347/400 [25:19<04:25,  5.00s/it][A
+[step 5547: 347/400] :  87%|████████▋ | 347/400 [25:19<04:25,  5.00s/it][A2025-05-30 11:04:12,437 [/home/fs01/wc648/protenix/./runner/finetune.py:303] INFO root: self.step 5547, self.iters_to_accumulate: 1
+2025-05-30 11:04:12,628 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GSLHLNSN...
+
+[step 5547: 347/400] :  87%|████████▋ | 348/400 [25:24<04:19,  4.99s/it][A
+[step 5548: 348/400] :  87%|████████▋ | 348/400 [25:24<04:19,  4.99s/it][A2025-05-30 11:04:16,263 [/home/fs01/wc648/protenix/./runner/finetune.py:303] INFO root: self.step 5548, self.iters_to_accumulate: 1
+2025-05-30 11:04:16,452 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GVSLRHLS...
+
+[step 5548: 348/400] :  87%|████████▋ | 349/400 [25:28<03:56,  4.63s/it][A
+[step 5549: 349/400] :  87%|████████▋ | 349/400 [25:28<03:56,  4.63s/it][A2025-05-30 11:04:22,314 [/home/fs01/wc648/protenix/./runner/finetune.py:303] INFO root: self.step 5549, self.iters_to_accumulate: 1
+2025-05-30 11:04:22,500 [/home/fs01/wc648/protenix/./runner/finetune.py:303] INFO root: Step 5549 train: {'train/loss.avg': 0.8552928864955902, 'train/classification_loss.avg': 0.8552928864955902}
+2025-05-30 11:04:22,500 [/home/fs01/wc648/protenix/./runner/finetune.py:303] INFO root: Step 5549, lr: 0.001
+2025-05-30 11:04:22,506 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GLCVSVNR...
+
+[step 5549: 349/400] :  88%|████████▊ | 350/400 [25:34<04:12,  5.05s/it][A
+[step 5550: 350/400] :  88%|████████▊ | 350/400 [25:34<04:12,  5.05s/it][A2025-05-30 11:04:27,215 [/home/fs01/wc648/protenix/./runner/finetune.py:303] INFO root: self.step 5550, self.iters_to_accumulate: 1
+2025-05-30 11:04:27,403 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GPLTRVLI...
+
+[step 5550: 350/400] :  88%|████████▊ | 351/400 [25:39<04:04,  4.99s/it][A
+[step 5551: 351/400] :  88%|████████▊ | 351/400 [25:39<04:04,  4.99s/it][A2025-05-30 11:04:33,173 [/home/fs01/wc648/protenix/./runner/finetune.py:303] INFO root: self.step 5551, self.iters_to_accumulate: 1
+2025-05-30 11:04:33,362 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GRSKCFMD...
+
+[step 5551: 351/400] :  88%|████████▊ | 352/400 [25:45<04:14,  5.30s/it][A
+[step 5552: 352/400] :  88%|████████▊ | 352/400 [25:45<04:14,  5.30s/it][A

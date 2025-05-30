@@ -3061,4 +3061,36 @@ Loading extension module evoformer_attn...
 2025-05-30 11:03:22,953 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GGCASKPK...
 [step 1034: 234/400] :  59%|█████▉    | 235/400 [16:37<12:05,  4.39s/it][step 1035: 235/400] :  59%|█████▉    | 235/400 [16:37<12:05,  4.39s/it]2025-05-30 11:03:25,368 [/home/fs01/wc648/protenix/./runner/finetune.py:304] INFO root: self.step 1035, self.iters_to_accumulate: 1
 2025-05-30 11:03:25,559 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GGDVASTS...
-[step 1035: 235/400] :  59%|█████▉    | 236/400 [16:40<10:32,  3.86s/it][step 1036: 236/400] :  59%|█████▉    | 236/400 [16:40<10:32,  3.86s/it]
+[step 1035: 235/400] :  59%|█████▉    | 236/400 [16:40<10:32,  3.86s/it][step 1036: 236/400] :  59%|█████▉    | 236/400 [16:40<10:32,  3.86s/it]2025-05-30 11:03:30,202 [/home/fs01/wc648/protenix/./runner/finetune.py:304] INFO root: self.step 1036, self.iters_to_accumulate: 1
+2025-05-30 11:03:30,397 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GGDLKSQL...
+[step 1036: 236/400] :  59%|█████▉    | 237/400 [16:44<11:19,  4.17s/it][step 1037: 237/400] :  59%|█████▉    | 237/400 [16:44<11:19,  4.17s/it]2025-05-30 11:03:36,212 [/home/fs01/wc648/protenix/./runner/finetune.py:304] INFO root: self.step 1037, self.iters_to_accumulate: 1
+2025-05-30 11:03:36,397 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GSRCAKLN...
+[step 1037: 237/400] :  60%|█████▉    | 238/400 [16:50<12:40,  4.70s/it][step 1038: 238/400] :  60%|█████▉    | 238/400 [16:50<12:40,  4.70s/it]2025-05-30 11:03:38,789 [/home/fs01/wc648/protenix/./runner/finetune.py:304] INFO root: self.step 1038, self.iters_to_accumulate: 1
+2025-05-30 11:03:38,976 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GKSSKKSV...
+[step 1038: 238/400] :  60%|█████▉    | 239/400 [16:53<10:54,  4.06s/it][step 1039: 239/400] :  60%|█████▉    | 239/400 [16:53<10:54,  4.06s/it]2025-05-30 11:03:44,704 [/home/fs01/wc648/protenix/./runner/finetune.py:304] INFO root: self.step 1039, self.iters_to_accumulate: 1
+2025-05-30 11:03:44,888 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GFEDGPRC...
+[step 1039: 239/400] :  60%|██████    | 240/400 [16:59<12:18,  4.62s/it][step 1040: 240/400] :  60%|██████    | 240/400 [16:59<12:18,  4.62s/it]2025-05-30 11:03:47,306 [/home/fs01/wc648/protenix/./runner/finetune.py:304] INFO root: self.step 1040, self.iters_to_accumulate: 1
+2025-05-30 11:03:47,493 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GNLKKSTR...
+[step 1040: 240/400] :  60%|██████    | 241/400 [17:01<10:38,  4.02s/it][step 1041: 241/400] :  60%|██████    | 241/400 [17:01<10:38,  4.02s/it]2025-05-30 11:03:51,036 [/home/fs01/wc648/protenix/./runner/finetune.py:304] INFO root: self.step 1041, self.iters_to_accumulate: 1
+2025-05-30 11:03:51,212 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GSSKDSAS...
+[step 1041: 241/400] :  60%|██████    | 242/400 [17:05<10:20,  3.93s/it][step 1042: 242/400] :  60%|██████    | 242/400 [17:05<10:20,  3.93s/it]2025-05-30 11:03:53,639 [/home/fs01/wc648/protenix/./runner/finetune.py:304] INFO root: self.step 1042, self.iters_to_accumulate: 1
+2025-05-30 11:03:53,821 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GCASSKHR...
+[step 1042: 242/400] :  61%|██████    | 243/400 [17:08<09:16,  3.54s/it][step 1043: 243/400] :  61%|██████    | 243/400 [17:08<09:16,  3.54s/it]2025-05-30 11:03:57,403 [/home/fs01/wc648/protenix/./runner/finetune.py:304] INFO root: self.step 1043, self.iters_to_accumulate: 1
+2025-05-30 11:03:57,584 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GCFNSKHS...
+[step 1043: 243/400] :  61%|██████    | 244/400 [17:12<09:23,  3.61s/it][step 1044: 244/400] :  61%|██████    | 244/400 [17:12<09:23,  3.61s/it]2025-05-30 11:04:02,255 [/home/fs01/wc648/protenix/./runner/finetune.py:304] INFO root: self.step 1044, self.iters_to_accumulate: 1
+2025-05-30 11:04:02,442 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GTLWFGDF...
+[step 1044: 244/400] :  61%|██████▏   | 245/400 [17:17<10:19,  4.00s/it][step 1045: 245/400] :  61%|██████▏   | 245/400 [17:17<10:19,  4.00s/it]2025-05-30 11:04:08,274 [/home/fs01/wc648/protenix/./runner/finetune.py:304] INFO root: self.step 1045, self.iters_to_accumulate: 1
+2025-05-30 11:04:08,458 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GWCITVVH...
+[step 1045: 245/400] :  62%|██████▏   | 246/400 [17:22<11:47,  4.59s/it][step 1046: 246/400] :  62%|██████▏   | 246/400 [17:22<11:47,  4.59s/it]2025-05-30 11:04:13,154 [/home/fs01/wc648/protenix/./runner/finetune.py:304] INFO root: self.step 1046, self.iters_to_accumulate: 1
+2025-05-30 11:04:13,335 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GMGTSTFV...
+[step 1046: 246/400] :  62%|██████▏   | 247/400 [17:27<11:55,  4.68s/it][step 1047: 247/400] :  62%|██████▏   | 247/400 [17:27<11:55,  4.68s/it]2025-05-30 11:04:18,019 [/home/fs01/wc648/protenix/./runner/finetune.py:304] INFO root: self.step 1047, self.iters_to_accumulate: 1
+2025-05-30 11:04:18,211 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GKVLEKEA...
+[step 1047: 247/400] :  62%|██████▏   | 248/400 [17:32<12:03,  4.76s/it][step 1048: 248/400] :  62%|██████▏   | 248/400 [17:32<12:03,  4.76s/it]2025-05-30 11:04:21,861 [/home/fs01/wc648/protenix/./runner/finetune.py:304] INFO root: self.step 1048, self.iters_to_accumulate: 1
+2025-05-30 11:04:22,047 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GCIISYRR...
+[step 1048: 248/400] :  62%|██████▏   | 249/400 [17:36<11:15,  4.47s/it][step 1049: 249/400] :  62%|██████▏   | 249/400 [17:36<11:15,  4.47s/it]2025-05-30 11:04:26,771 [/home/fs01/wc648/protenix/./runner/finetune.py:304] INFO root: self.step 1049, self.iters_to_accumulate: 1
+2025-05-30 11:04:26,945 [/home/fs01/wc648/protenix/./runner/finetune.py:304] INFO root: Step 1049 train: {'train/loss.avg': 0.8984109079837799, 'train/classification_loss.avg': 0.8984109079837799}
+2025-05-30 11:04:26,966 [/home/fs01/wc648/protenix/./runner/finetune.py:304] INFO root: Step 1049, lr: 0.0005250000000000001
+2025-05-30 11:04:26,967 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GFDLCPQR...
+[step 1049: 249/400] :  62%|██████▎   | 250/400 [17:41<11:25,  4.57s/it][step 1050: 250/400] :  62%|██████▎   | 250/400 [17:41<11:25,  4.57s/it]2025-05-30 11:04:29,373 [/home/fs01/wc648/protenix/./runner/finetune.py:304] INFO root: self.step 1050, self.iters_to_accumulate: 1
+2025-05-30 11:04:29,550 [/home/fs01/wc648/protenix/protenix/data/dataset.py:1049] INFO protenix.data.dataset: Featurizing NMT2GKVKGKHR...
+[step 1050: 250/400] :  63%|██████▎   | 251/400 [17:44<09:53,  3.98s/it][step 1051: 251/400] :  63%|██████▎   | 251/400 [17:44<09:53,  3.98s/it]
