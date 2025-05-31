@@ -110,7 +110,7 @@ class InferenceRunner(object):
             }
         self.model.load_state_dict(
             state_dict=checkpoint["model"],
-            strict=True,
+            strict=False,
         )
         self.model.eval()
         self.print(f"Finish loading checkpoint.")
@@ -142,6 +142,7 @@ class InferenceRunner(object):
                 label_full_dict=None,
                 label_dict=None,
                 mode="inference",
+                atom_array=data["atom_array"],
             )
 
         return prediction

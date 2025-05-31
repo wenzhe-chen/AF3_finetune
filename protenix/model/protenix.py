@@ -32,6 +32,7 @@ from protenix.openfold_local.model.primitives import LayerNorm
 from protenix.utils.logger import get_logger
 from protenix.utils.permutation.permutation import SymmetricPermutation
 from protenix.utils.torch_utils import autocasting_disable_decorator
+from protenix.data.featurizer import Featurizer
 
 from .modules.confidence import ConfidenceHead
 from .modules.diffusion import DiffusionModule
@@ -307,6 +308,7 @@ class Protenix(nn.Module):
         chunk_size: Optional[int] = 4,
         N_model_seed: int = 1,
         symmetric_permutation: SymmetricPermutation = None,
+        atom_array: Any = None,
     ) -> tuple[dict[str, torch.Tensor], dict[str, Any], dict[str, Any]]:
         """
         Main inference loop (multiple model seeds) for the Alphafold3 model.
@@ -324,6 +326,9 @@ class Protenix(nn.Module):
         Returns:
             tuple[dict[str, torch.Tensor], dict[str, Any], dict[str, Any]]: Prediction, log, and time dictionaries.
         """
+        if self.configs.model.confidence_classifier.use_intersted_atom_mask:
+            assert atom_array is not None, "atom_array is required when use_intersted_atom_mask is True"
+
         pred_dicts = []
         log_dicts = []
         time_trackers = []
@@ -336,6 +341,7 @@ class Protenix(nn.Module):
                 inplace_safe=inplace_safe,
                 chunk_size=chunk_size,
                 symmetric_permutation=symmetric_permutation,
+                atom_array=atom_array,
             )
             pred_dicts.append(pred_dict)
             log_dicts.append(log_dict)
@@ -377,6 +383,7 @@ class Protenix(nn.Module):
         inplace_safe: bool = True,
         chunk_size: Optional[int] = 4,
         symmetric_permutation: SymmetricPermutation = None,
+        atom_array: Any = None,
     ) -> tuple[dict[str, torch.Tensor], dict[str, Any], dict[str, Any]]:
         """
         Main inference loop (single model seed) for the Alphafold3 model.
@@ -491,11 +498,20 @@ class Protenix(nn.Module):
         # Summary Confidence & Full Data
         # Computed after coordinates and logits are permuted
         #print (input_feature_dict["asym_id"])
-        if label_dict is None:
+        if not self.configs['model']['confidence_classifier']['use_intersted_atom_mask']:
             interested_atom_mask = None
         else:
-            interested_atom_mask = None
-            #interested_atom_mask = label_dict.get("interested_ligand_mask", None)
+            if atom_array is not None:
+                coords = pred_dict["coordinate"][0].detach().cpu().numpy().astype(float)
+                atom_array.coord = coords
+                interested_ligand_mask, pocket_mask = Featurizer.get_lig_pocket_mask(
+                    atom_array=atom_array, lig_label_asym_id="B"
+                )
+                interested_atom_mask = interested_ligand_mask
+                print('using interested_atom_mask',interested_atom_mask)
+            else:
+                print('atom_array is Missing')
+                interested_atom_mask = None
 
         pred_dict["summary_confidence"], pred_dict["full_data"] = (
             sample_confidence.compute_full_data_and_summary(
@@ -538,6 +554,8 @@ class Protenix(nn.Module):
                 'has_clash', 'disorder'
             ]
 
+            if self.configs['model']['confidence_classifier']['use_intersted_atom_mask']:
+                keys.extend(['pb_ranking_score', 'pb_ranking_score_vdw_penalized'])
             # For each sample in summary_confidence, flatten and concatenate all specified keys.
             features = [
                 torch.cat(
@@ -557,10 +575,11 @@ class Protenix(nn.Module):
 
             # Store confidence-based classification output
             pred_dict['binder'] = confidence_output
-            print('confidence_output',confidence_output, 'pred_dict[binder]', pred_dict['binder'])
+            #print('confidence_output',confidence_output, 'pred_dict[binder]', pred_dict['binder'])
 
-            # for i in range (len(pred_dict["summary_confidence"])):
-            #     pred_dict["summary_confidence"][i]['binder']= pred_dict['binder'][i]
+            # Store confidence-based classification output in summary_confidence for the output.json
+            for i in range (len(pred_dict["summary_confidence"])):
+                 pred_dict["summary_confidence"][i]['binder']= torch.argmax(pred_dict['binder'][i], dim=-1)
             
             # #print(pred_dict["summary_confidence"][0])
 
@@ -573,6 +592,7 @@ class Protenix(nn.Module):
         label_dict: dict,
         N_cycle: int,
         symmetric_permutation: SymmetricPermutation,
+        atom_array: Any = None,
         inplace_safe: bool = False,
         chunk_size: Optional[int] = None,
      ) -> tuple[dict[str, torch.Tensor], dict[str, Any], dict[str, Any]]:
@@ -668,7 +688,8 @@ class Protenix(nn.Module):
             }
         )
 
-        #print('plddt.shape',pred_dict['plddt'].shape)
+        print('plddt.shape',pred_dict['plddt'].shape)
+        print('coordinate_mini',coordinate_mini.shape)
         #print('asym_id',input_feature_dict["asym_id"])
 
         if self.configs['classifier']:
@@ -689,11 +710,20 @@ class Protenix(nn.Module):
             distogram_logits=self.distogram_head(z),
             **sample_confidence.get_bin_params(self.configs.loss.distogram),
             )  # [N_token, N_token]
-            if label_dict is None:
+            if label_dict is None or not self.configs['model']['confidence_classifier']['use_intersted_atom_mask']:
                 interested_atom_mask = None
             else:
-                #interested_atom_mask = label_dict.get("interested_ligand_mask", None)
-                interested_atom_mask = None
+                if atom_array is not None:
+                    coords = coordinate_mini[0].detach().cpu().numpy().astype(float)
+                    atom_array.coord = coords
+                    interested_ligand_mask, pocket_mask = Featurizer.get_lig_pocket_mask(
+                        atom_array=atom_array, lig_label_asym_id="B"
+                    )
+                    interested_atom_mask = interested_ligand_mask
+                    print('using interested_atom_mask',interested_atom_mask)
+                else:
+                    print('atom_array is Missing')
+                    interested_atom_mask = None
 
             summary_confidence, full_data = sample_confidence.compute_full_data_and_summary(
                 configs=self.configs,
@@ -715,7 +745,7 @@ class Protenix(nn.Module):
                 elements_one_hot=input_feature_dict["ref_element"]
                 )
             
-            #print('summary_confidence:',summary_confidence)
+            print('summary_confidence:',summary_confidence)
 
             keys = [
                 'plddt', 'gpde', 'ptm', 'iptm', 
@@ -724,6 +754,8 @@ class Protenix(nn.Module):
                 'chain_plddt', 'chain_pair_plddt', 
                 'has_clash', 'disorder'
             ]
+            if self.configs['model']['confidence_classifier']['use_intersted_atom_mask']:
+                 keys.extend(['pb_ranking_score', 'pb_ranking_score_vdw_penalized'])
 
             # For each sample in summary_confidence, flatten and concatenate all specified keys.
             features = [
@@ -743,7 +775,7 @@ class Protenix(nn.Module):
 
             # Store confidence-based classification output
             pred_dict['binder'] = confidence_output
-            print('confidence_output',confidence_output, 'pred_dict[binder]', pred_dict['binder'])
+            #print('confidence_output',confidence_output, 'pred_dict[binder]', pred_dict['binder'])
                 
 
         if self.train_confidence_only:
@@ -794,6 +826,7 @@ class Protenix(nn.Module):
         label_full_dict: dict[str, Any],
         label_dict: dict[str, Any],
         mode: str = "inference",
+        atom_array: Any = None,
         current_step: Optional[int] = None,
         symmetric_permutation: SymmetricPermutation = None,
     ) -> tuple[dict[str, torch.Tensor], dict[str, Any], dict[str, Any]]:
@@ -832,6 +865,7 @@ class Protenix(nn.Module):
                 symmetric_permutation=symmetric_permutation,
                 inplace_safe=inplace_safe,
                 chunk_size=chunk_size, 
+                atom_array=atom_array,
             )
         elif mode == "inference":
             pred_dict, log_dict, time_tracker = self.main_inference_loop(
@@ -843,6 +877,7 @@ class Protenix(nn.Module):
                 chunk_size=chunk_size,
                 N_model_seed=self.N_model_seed,
                 symmetric_permutation=None,
+                atom_array=atom_array,
             )
             log_dict.update({"time": time_tracker})
         elif mode == "eval":
@@ -863,6 +898,7 @@ class Protenix(nn.Module):
                 chunk_size=chunk_size,
                 N_model_seed=self.N_model_seed,
                 symmetric_permutation=symmetric_permutation,
+                atom_array=atom_array,
             )
             log_dict.update({"time": time_tracker})
 

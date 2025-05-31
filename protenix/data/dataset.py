@@ -815,6 +815,9 @@ class SequenceClassificationDataset(Dataset):
         self.shuffle_mols = kwargs.get("shuffle_mols", False)
         self.shuffle_sym_ids = kwargs.get("shuffle_sym_ids", False)
 
+        # for classifier
+        self.use_interested_ligand_mask = kwargs.get("use_interested_ligand_mask", False)
+
         # Typically used for test sets
         self.find_pocket = kwargs.get("find_pocket", False)
         self.find_all_pockets = kwargs.get("find_all_pockets", False)  # for dev
@@ -976,7 +979,30 @@ class SequenceClassificationDataset(Dataset):
 
         data = {}
         data["input_feature_dict"] = feat
-        data["label_dict"] = torch.tensor(int(single_sample_dict["label"])).long()
+        #data["label_dict"] = torch.tensor(int(single_sample_dict["label"])).long()
+
+        # Turn binary label into one-hot label
+        label_one_hot = torch.zeros(2)
+        label_one_hot[int(single_sample_dict["label"])] = 1
+        data["label_dict"] = label_one_hot
+
+        # Masks for Ligand (needs development)
+        if self.use_interested_ligand_mask:
+
+            # Get asym ID of the specific ligand in the `main` pocket
+            lig_asym_id = 1
+            ligands = [lig_asym_id]
+
+            # Note: the `main` pocket is the 0-indexed one.
+            # [N_pocket, N_atom], [N_pocket, N_atom].
+            # If not find_all_pockets, then N_pocket = 1.
+            # interested_ligand_mask, pocket_mask = feat.get_lig_pocket_mask(
+            #     atom_array=full_atom_array, lig_label_asym_id=ligands
+            # )
+
+            # data["pocket_mask"] = pocket_mask
+            # data["interested_ligand_mask"] = interested_ligand_mask
+
         # Add dimension related items
         N_token = feat["token_index"].shape[0]
         N_atom = feat["atom_to_token_idx"].shape[0]
@@ -1066,6 +1092,7 @@ class SequenceClassificationDataset(Dataset):
                     raise Exception(e)
             data["sample_name"] = single_sample_dict["name"]
             data["sample_index"] = index
+            data["atom_array"] = atom_array
             return data, atom_array, error_message  
     
     

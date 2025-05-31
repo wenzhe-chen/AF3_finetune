@@ -241,9 +241,9 @@ model_configs = {
             "no_bins": GlobalConfigValue("no_bins"),
         },
         "confidence_classifier":{
-            'use_intersted_atom_mask': False,  # Whether to use the confidence scores in classification
+            'use_intersted_atom_mask': True,  # Whether to use the confidence scores in classification
             'hidden_units': 64,  # Example: number of hidden units in the MLP classifier
-            'output_units': 1, # 0: non-binder, 1: binder
+            'output_units': 2, # 0: non-binder, 1: binder one-hot-label
             'number_of_chains': 2,  
         }
     },
