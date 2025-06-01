@@ -555,7 +555,7 @@ class Protenix(nn.Module):
             ]
 
             if self.configs['model']['confidence_classifier']['use_intersted_atom_mask']:
-                keys.extend(['pb_ranking_score', 'pb_ranking_score_vdw_penalized'])
+                keys.extend(['pb_ranking_score'])
             # For each sample in summary_confidence, flatten and concatenate all specified keys.
             features = [
                 torch.cat(
@@ -688,8 +688,8 @@ class Protenix(nn.Module):
             }
         )
 
-        print('plddt.shape',pred_dict['plddt'].shape)
-        print('coordinate_mini',coordinate_mini.shape)
+        #print('plddt.shape',pred_dict['plddt'].shape)
+        #print('coordinate_mini',coordinate_mini.shape)
         #print('asym_id',input_feature_dict["asym_id"])
 
         if self.configs['classifier']:
@@ -740,12 +740,12 @@ class Protenix(nn.Module):
                 atom_is_polymer=1 - input_feature_dict["is_ligand"],
                 N_recycle=N_cycle,
                 interested_atom_mask=interested_atom_mask,
-                return_full_data=False,
+                return_full_data=True,
                 mol_id=input_feature_dict["mol_id"],
                 elements_one_hot=input_feature_dict["ref_element"]
                 )
-            
             print('summary_confidence:',summary_confidence)
+            print('full_data:',full_data[0].keys())
 
             keys = [
                 'plddt', 'gpde', 'ptm', 'iptm', 
@@ -755,7 +755,7 @@ class Protenix(nn.Module):
                 'has_clash', 'disorder'
             ]
             if self.configs['model']['confidence_classifier']['use_intersted_atom_mask']:
-                 keys.extend(['pb_ranking_score', 'pb_ranking_score_vdw_penalized'])
+                 keys.extend(['pb_ranking_score'])
 
             # For each sample in summary_confidence, flatten and concatenate all specified keys.
             features = [

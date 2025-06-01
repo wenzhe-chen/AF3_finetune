@@ -6,18 +6,20 @@ class ConfidenceClassifier(nn.Module):
         super(ConfidenceClassifier, self).__init__()
         self.number_of_chains = number_of_chains
         if use_intersted_atom_mask:
-            self.input_dim = 6 + self.number_of_chains * 9 + 2
+            self.input_dim = 6 + self.number_of_chains * 9 + 1
         else:
             self.input_dim = 6 + self.number_of_chains * 9
         self.hidden_units = hidden_units
         self.output_units = output_units
 
         self.fc1 = nn.Linear(self.input_dim, self.hidden_units)
+        self.ln1 = nn.LayerNorm(self.hidden_units)
         self.fc2 = nn.Linear(self.hidden_units, self.output_units)
         self.relu = nn.ReLU()
 
     def forward(self, x):
-        x = self.relu(self.fc1(x))
+        x = self.ln1(self.fc1(x))
+        x = self.relu(x)
         x = self.fc2(x)
         return x
 

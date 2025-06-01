@@ -18,16 +18,16 @@ export LAYERNORM_TYPE=fast_layernorm
 checkpoint_path="/home/fs01/wc648/protenix/af3-dev/release_model/model_v1.pt"
 
 python3 ./runner/finetune.py \
---run_name protenix_finetune_classifier_test \
+--run_name protenix_finetune_classifier_only \
 --seed 42 \
 --base_dir ./output \
 --dtype bf16 \
 --project protenix \
 --use_deepspeed_evo_attention true \
---use_wandb false \
+--use_wandb true \
 --train_classifier_only true \
 --diffusion_batch_size 48 \
---eval_interval 1 \
+--eval_interval 400 \
 --log_interval 50 \
 --checkpoint_interval 400 \
 --ema_decay 0.999 \

@@ -160,8 +160,10 @@ class AF3Trainer(object):
         loss_fn = torch.nn.CrossEntropyLoss()   
         #loss_fn = torch.nn.BCEWithLogitsLoss()
         loss = loss_fn(logits, labels)
-        print ('loss',loss)
-        loss_dict = {'loss': loss, 'classification_loss': loss}
+        #print ('loss',loss)
+        accuracy = (logits.argmax(dim=-1) == labels).float().mean()
+        loss_dict = {'loss': loss, 'classification_loss': loss, 'accuracy': accuracy}
+        print('loss_dict',loss_dict)
         return loss, loss_dict
 
     def init_loss(self):
@@ -401,6 +403,7 @@ class AF3Trainer(object):
                             {k: v for k, v in lddt_metrics.items() if "diff" not in k}
                         )
                     simple_metrics.update(loss_dict)
+                    
 
                 # Metrics
                 for key, value in simple_metrics.items():
@@ -470,8 +473,8 @@ class AF3Trainer(object):
             self.optimizer.zero_grad(set_to_none=True)
             self.lr_scheduler.step()
         for key, value in loss_dict.items():
-            if "loss" not in key:
-                continue
+            # if "loss" not in key:
+            #     continue
             self.train_metric_wrapper.add(key, value, namespace="train")
         torch.cuda.empty_cache()
 
