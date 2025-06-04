@@ -134,7 +134,7 @@ data_configs = {
         "base_info": {
             "mmcif_dir": os.path.join(DATA_ROOT_DIR, "mmcif"),
             "bioassembly_dict_dir": os.path.join(DATA_ROOT_DIR, "mmcif_bioassembly"),
-            "indices_fpath": "/home/fs01/wc648/protenix/examples/2K_screen.csv",
+            "indices_fpath": "/home/fs01/wc648/protenix/examples/train_2K_screen.csv",
             "pdb_list": "",
             "random_sample_if_failed": True,
             "max_n_token": -1,  # can be used for removing data with too many tokens.
@@ -161,7 +161,7 @@ data_configs = {
         "base_info": {
             "mmcif_dir": os.path.join(DATA_ROOT_DIR, "mmcif"),
             "bioassembly_dict_dir": os.path.join(DATA_ROOT_DIR, "mmcif_bioassembly"),
-            "indices_fpath": "/home/fs01/wc648/protenix/examples/2K_screen_test.csv",
+            "indices_fpath": "/home/fs01/wc648/protenix/examples/eval_2K_screen.csv",
             "pdb_list": "",
             "random_sample_if_failed": True,
             "max_n_token": GlobalConfigValue("test_max_n_token"),  # filter data, can be used for removing data with too many tokens.

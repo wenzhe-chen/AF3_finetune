@@ -27,7 +27,8 @@ basic_configs = {
     "run_name": RequiredValue(str),
     "base_dir": RequiredValue(str),
     # training
-    "train_classifier_only": RequiredValue(bool),
+    "train_classifier_only": False,
+    "train_classifier_by_inference": False,
     "eval_interval": RequiredValue(int),
     "log_interval": RequiredValue(int),
     "checkpoint_interval": -1,
@@ -36,8 +37,10 @@ basic_configs = {
     "eval_only": False,
     "load_checkpoint_path": "",
     "load_ema_checkpoint_path": "",
+    "load_checkpoint_path_classifier": "",
     "load_strict": False,
     "load_params_only": True,
+    "load_classifier_checkpoint": False,
     "skip_load_step": False,
     "skip_load_optimizer": False,
     "skip_load_scheduler": False,
@@ -234,17 +237,18 @@ model_configs = {
             "distance_bin_start": 3.375,
             "distance_bin_end": 21.375,
             "distance_bin_step": 1.25,
-            "stop_gradient": True,
+            "stop_gradient": False,
         },
         "distogram_head": {
             "c_z": GlobalConfigValue("c_z"),
             "no_bins": GlobalConfigValue("no_bins"),
         },
         "confidence_classifier":{
-            'use_intersted_atom_mask': True,  # Whether to use the confidence scores in classification
-            'hidden_units': 64,  # Example: number of hidden units in the MLP classifier
+            'use_intersted_atom_mask': False,  # Whether to use the confidence scores in classification
+            'hidden_units': 1024,  # Example: number of hidden units in the MLP classifier
             'output_units': 2, # 0: non-binder, 1: binder one-hot-label
             'number_of_chains': 2,  
+            'ligand_length': 8, # token length
         }
     },
 }

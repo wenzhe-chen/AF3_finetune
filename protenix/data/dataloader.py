@@ -354,11 +354,19 @@ def get_dataloaders(
     test_dataset_sizes = {}
     for test_name, test_dataset in test_datasets.items():
         test_dataset_sizes[test_name] = len(test_dataset)
-        test_sampler = (
-            KeySumBalancedSampler(test_dataset, key="num_tokens", seed=configs.seed)
-            if world_size > 1
-            else None
-        )
+
+        if configs.classifier:
+            test_sampler = (
+                DistributedSampler(test_dataset, shuffle=False, seed=configs.seed)
+                if world_size > 1
+                else None
+            )
+        else:
+            test_sampler = (
+                KeySumBalancedSampler(test_dataset, key="num_tokens", seed=configs.seed)
+                if world_size > 1
+                else None
+            )
         test_dls[test_name] = DataLoader(
             test_dataset,
             batch_size=1,

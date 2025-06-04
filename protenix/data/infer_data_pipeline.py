@@ -18,11 +18,17 @@ import logging
 import time
 import traceback
 import warnings
-from typing import Any, Mapping
+from typing import Any, Callable, Optional, Union, Mapping
+from pathlib import Path
+import os
+
+
 
 import torch
 from biotite.structure import AtomArray
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
+import pandas as pd
+
 
 from protenix.data.data_pipeline import DataPipeline
 from protenix.data.json_to_feature import SampleDictToFeatures
@@ -30,11 +36,32 @@ from protenix.data.msa_featurizer import InferenceMSAFeaturizer
 from protenix.data.utils import data_type_transform, make_dummy_feature
 from protenix.utils.distributed import DIST_WRAPPER
 from protenix.utils.torch_utils import dict_to_tensor
+from protenix.data.dataset import SequenceClassificationDataset
 
 logger = logging.getLogger(__name__)
 
 warnings.filterwarnings("ignore", module="biotite")
 
+PANDAS_NA_VALUES = [
+    "",
+    "#N/A",
+    "#N/A N/A",
+    "#NA",
+    "-1.#IND",
+    "-1.#QNAN",
+    "-NaN",
+    "-nan",
+    "1.#IND",
+    "1.#QNAN",
+    "<NA>",
+    "N/A",
+    # "NA",
+    "NULL",
+    "NaN",
+    "n/a",
+    "nan",
+    "null",
+]
 
 def get_inference_dataloader(configs: Any) -> DataLoader:
     """
@@ -45,12 +72,34 @@ def get_inference_dataloader(configs: Any) -> DataLoader:
 
     Returns:
         A DataLoader object configured for inference.
-    """
-    inference_dataset = InferenceDataset(
-        input_json_path=configs.input_json_path,
-        dump_dir=configs.dump_dir,
-        use_msa=configs.use_msa,
-    )
+    """ 
+    if configs.train_classifier_by_inference:
+        data_config = configs.data
+
+        # not implement for multiple datasets
+        train_name = data_config.train_sets[0]
+        config_dict = data_config[train_name].to_dict()
+
+        #print('config_dict',config_dict)
+
+        inference_dataset = InferenceDataset(
+            input_json_path=configs.input_json_path,
+            dump_dir=configs.dump_dir,
+            use_msa=configs.use_msa,
+            precomputed_msa_dir=config_dict["base_info"]["precomputed_msa_dir"],
+            msa_save_dir=config_dict["base_info"]["msa_save_dir"],
+            msa_search_tool=config_dict["base_info"]["msa_search_tool"],
+            msa_pairing_db=config_dict["base_info"]["msa_pairing_db"],
+            msa_pairing_db_fpath=config_dict["base_info"]["msa_pairing_db_fpath"],
+            msa_non_pairing_db_fpath=config_dict["base_info"]["msa_non_pairing_db_fpath"],
+        )
+    else:
+        inference_dataset = InferenceDataset(
+            input_json_path=configs.input_json_path,
+            dump_dir=configs.dump_dir,
+            use_msa=configs.use_msa,
+        )
+
     sampler = DistributedSampler(
         dataset=inference_dataset,
         num_replicas=DIST_WRAPPER.world_size,
@@ -73,13 +122,83 @@ class InferenceDataset(Dataset):
         input_json_path: str,
         dump_dir: str,
         use_msa: bool = True,
+        **kwargs,
     ) -> None:
 
         self.input_json_path = input_json_path
         self.dump_dir = dump_dir
         self.use_msa = use_msa
-        with open(self.input_json_path, "r") as f:
-            self.inputs = json.load(f)
+
+        self.precomputed_msa_dir = kwargs.get("precomputed_msa_dir", None)
+        self.msa_save_dir = kwargs.get("msa_save_dir", "./searched_msa")
+        self.msa_search_tool = kwargs.get("msa_search_tool", "jackhmmer")
+        self.msa_pairing_db = kwargs.get("msa_pairing_db", "uniprot")
+        self.msa_pairing_db_fpath = kwargs.get("msa_pairing_db_fpath", "/home/fs01/wc648/RoseTTAFold-All-Atom/uniprot/uniprot_sprot.fasta")
+        self.msa_non_pairing_db_fpath = kwargs.get("msa_non_pairing_db_fpath", "/home/fs01/wc648/RoseTTAFold-All-Atom/mgnify/mgy_clusters_2018_12.fa")
+
+        if self.input_json_path.endswith(".json"):
+            with open(self.input_json_path, "r") as f:
+                self.inputs = json.load(f)
+        elif self.input_json_path.endswith(".csv"):
+            #self.inputs = pd.read_csv(self.input_json_path)
+            self.inputs = self.load_inputs(self.input_json_path)
+    
+    def load_inputs(self, indices_fpath: Union[str, Path]) -> list[dict]:
+        """
+        Reads and processes a list of indices from a CSV file.
+
+        Args:
+            indices_fpath: Path to the CSV file containing the indices.
+
+        Returns:
+            A List of dicts containing the processed indices.
+        """
+        indices_list = pd.read_csv(indices_fpath, na_values=PANDAS_NA_VALUES, keep_default_na=False, dtype=str)
+        num_data = len(indices_list)
+        logger.info(f"#Rows in indices list: {num_data}")
+        inputs = []
+        for idx in range(num_data):
+            #print(indices_list.iloc[idx])
+            input = {}
+            input["name"] = indices_list.iloc[idx]["name"]
+            input["model_seed"] = []
+            input["assembly_id"] = "1"
+            input["label"] = indices_list.iloc[idx]["label"]
+            sequence_list = indices_list.iloc[idx]["sequences"].split(":")
+            sequences = []
+            for j in range(len(sequence_list)):
+                chain_dict = {}
+                if len(sequence_list[j]) > 50:
+                    chain_dict["proteinChain"] = {
+                        "sequence": sequence_list[j],
+                        "count": 1,
+                        "msa": {
+                            "precomputed_msa_dir": os.path.join(self.precomputed_msa_dir, "1"),
+                            "search_tool": self.msa_search_tool,
+                            "pairing_db": self.msa_pairing_db,
+                            "pairing_db_fpath": self.msa_pairing_db_fpath,
+                            "non_pairing_db_fpath": self.msa_non_pairing_db_fpath,
+                            "msa_save_dir": self.msa_save_dir
+                        }
+                    }
+                else:
+                    chain_dict["proteinChain"] = {
+                        "sequence": sequence_list[j],
+                        "count": 1,
+                        "msa": {
+                            "precomputed_msa_dir": os.path.join(self.precomputed_msa_dir, "2"),
+                            "search_tool": self.msa_search_tool,
+                            "pairing_db": self.msa_pairing_db,
+                            "pairing_db_fpath": self.msa_pairing_db_fpath,
+                            "non_pairing_db_fpath": self.msa_non_pairing_db_fpath,
+                            "msa_save_dir": self.msa_save_dir
+                        }
+                    }
+                sequences.append(chain_dict)
+            input["sequences"] = sequences
+
+            inputs.append(input)
+        return inputs
 
     def process_one(
         self,
@@ -141,6 +260,8 @@ class InferenceDataset(Dataset):
 
         data = {}
         data["input_feature_dict"] = feat
+
+        data["label_dict"] = int(single_sample_dict["label"])
 
         # Add dimension related items
         N_token = feat["token_index"].shape[0]

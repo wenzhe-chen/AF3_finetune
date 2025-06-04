@@ -16,18 +16,21 @@
 export LAYERNORM_TYPE=fast_layernorm
 #checkpoint_path="/home/fs01/wc648/protenix/af3-dev/release_model/model_v1.pt"
 checkpoint_path="/home/fs01/wc648/protenix/af3-dev/release_model/model_v1.pt"
+checkpoint_path_classifier="/home/fs01/wc648/protenix/output/confidence_classifier_2K_screen.pt"
+
 
 python3 ./runner/finetune.py \
---run_name protenix_finetune_classifier_only \
+--run_name protenix_finetune_classifier_pair-only \
 --seed 42 \
 --base_dir ./output \
 --dtype bf16 \
 --project protenix \
 --use_deepspeed_evo_attention true \
 --use_wandb true \
---train_classifier_only true \
+--train_classifier_only false \
+--iters_to_accumulate 64 \
 --diffusion_batch_size 48 \
---eval_interval 400 \
+--eval_interval 1630 \
 --log_interval 50 \
 --checkpoint_interval 400 \
 --ema_decay 0.999 \
@@ -36,7 +39,10 @@ python3 ./runner/finetune.py \
 --warmup_steps 2000 \
 --lr 0.001 \
 --sample_diffusion.N_step 20 \
+--sample_diffusion.N_sample 1 \
 --load_checkpoint_path ${checkpoint_path} \
+--load_classifier_checkpoint true \
+--load_checkpoint_path_classifier ${checkpoint_path_classifier} \
 --load_ema_checkpoint_path ${checkpoint_path} \
 --data.train_sets classifier_table \
 --data.test_sets classifier_table_test

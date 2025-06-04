@@ -1093,7 +1093,7 @@ class SequenceClassificationDataset(Dataset):
             data["sample_name"] = single_sample_dict["name"]
             data["sample_index"] = index
             data["atom_array"] = atom_array
-            return data, atom_array, error_message  
+            return data, atom_array, error_message
     
     
 
@@ -1451,5 +1451,12 @@ def get_datasets(
             dataset_param["ref_pos_augment"] = data_config.get("test_ref_pos_augment", True)
             test_dataset = BaseSingleDataset(**dataset_param)
             test_datasets[test_name] = test_dataset
+
+    test_dataset = WeightedMultiDataset(
+        datasets=test_datasets,
+        dataset_names=data_config.test_sets,
+        datapoint_weights=datapoint_weights,
+        dataset_sample_weights=data_config.train_sampler.train_sample_weights,
+    )
 
     return train_dataset, test_datasets

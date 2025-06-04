@@ -174,8 +174,21 @@ class AF3Trainer(object):
         )
         self.lddt_metrics = LDDTMetrics(self.configs)
 
+    def set_trainable(self, model, module_names, trainable):
+        for name, param in model.named_parameters():
+            if any(m in name for m in module_names):
+                param.requires_grad = trainable
+            else:
+                param.requires_grad = not trainable
+
     def init_model(self):
         self.raw_model = Protenix(self.configs).to(self.device)
+        if self.configs['train_classifier_only']:
+            self.set_trainable(self.raw_model, ['classifier'], True)
+        else:
+            # all modules: "confidence_classifier, confidence_head, distogram_head, diffusion, input_embedder, template_embedder, msa_module, pairformer_stack, linear_no_bias, layernorm"
+            self.set_trainable(self.raw_model, ['classifier','confidence_head','distogram_head','diffusion'], False)
+        
         self.use_ddp = False
         if DIST_WRAPPER.world_size > 1:
             self.print(f"Using DDP")
@@ -237,10 +250,11 @@ class AF3Trainer(object):
         def _load_checkpoint(
             checkpoint_path: str,
             load_params_only: bool,
+            checkpoint_path_classifier: str = "",
             skip_load_optimizer: bool = False,
             skip_load_step: bool = False,
             skip_load_scheduler: bool = False,
-        ):
+         ):
             if not os.path.exists(checkpoint_path):
                 raise Exception(f"Given checkpoint path not exist [{checkpoint_path}]")
             self.print(
@@ -255,10 +269,13 @@ class AF3Trainer(object):
                     k[len("module.") :]: v for k, v in checkpoint["model"].items()
                 }
 
-            self.model.load_state_dict(
+            missing_keys, unexpected_keys = self.model.load_state_dict(
                 state_dict=checkpoint["model"],
                 strict=self.configs.load_strict,
             )
+            print('missing_keys',missing_keys)
+            print('unexpected_keys',unexpected_keys)
+            
             if not load_params_only:
                 if not skip_load_optimizer:
                     self.print(f"Loading optimizer state")
@@ -276,11 +293,42 @@ class AF3Trainer(object):
                     self.init_scheduler(last_epoch=self.step - 1)
             self.print(f"Finish loading checkpoint, current step: {self.step}")
 
+            if self.configs.load_classifier_checkpoint:
+                if not os.path.exists(checkpoint_path_classifier):
+                    print('checkpoint_path_classifier',checkpoint_path_classifier)
+                    raise Exception(f"Given checkpoint path not exist [{checkpoint_path_classifier}]")
+                self.print(
+                    f"Loading from {checkpoint_path_classifier}, strict: {self.configs.load_strict}"
+                )
+                checkpoint_classifier = torch.load(checkpoint_path_classifier, self.device)
+                sample_key_classifier = [k for k in checkpoint_classifier.keys()][0]
+                self.print(f"Classifier Sampled key: {sample_key_classifier}")
+                if sample_key_classifier.startswith("module.") and not self.use_ddp:
+                    # DDP checkpoint has module. prefix
+                    checkpoint_classifier = {
+                        k[len("module.") :]: v for k, v in checkpoint_classifier.items()
+                    }
+                if self.use_ddp:
+                    missing_keys_classifier, unexpected_keys_classifier = self.model.module.confidence_classifier.load_state_dict(
+                        state_dict=checkpoint_classifier,
+                        strict= False,
+                    )
+                else:
+                    missing_keys_classifier, unexpected_keys_classifier = self.model.confidence_classifier.load_state_dict(
+                        state_dict=checkpoint_classifier,
+                        strict= False,
+                    )
+                print('missing_keys_classifier',missing_keys_classifier)
+                print('unexpected_keys_classifier',unexpected_keys_classifier)
+                
+                self.print(f"Finish loading classifier checkpoint, current step: {self.step}")
+
         # Load EMA model parameters
         if self.configs.load_ema_checkpoint_path:
             _load_checkpoint(
                 self.configs.load_ema_checkpoint_path,
                 load_params_only=True,
+                checkpoint_path_classifier = self.configs.load_checkpoint_path_classifier,
             )
             self.ema_wrapper.register()
 
@@ -289,6 +337,7 @@ class AF3Trainer(object):
             _load_checkpoint(
                 self.configs.load_checkpoint_path,
                 self.configs.load_params_only,
+                self.configs.load_checkpoint_path_classifier,
                 skip_load_optimizer=self.configs.skip_load_optimizer,
                 skip_load_scheduler=self.configs.skip_load_scheduler,
                 skip_load_step=self.configs.skip_load_step,
@@ -402,7 +451,7 @@ class AF3Trainer(object):
                         simple_metrics.update(
                             {k: v for k, v in lddt_metrics.items() if "diff" not in k}
                         )
-                    simple_metrics.update(loss_dict)
+                    
                     
 
                 # Metrics
@@ -536,7 +585,7 @@ class AF3Trainer(object):
                 
 
                 batch = to_device(batch[0], self.device)
-                print('batch',batch.keys())
+                #print('batch',batch.keys())
 
                 self.progress_bar()
                 self.train_step(batch)

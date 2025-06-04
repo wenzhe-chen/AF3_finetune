@@ -717,7 +717,7 @@ def break_down_to_per_sample_dict(input_dict: dict, shared_keys=[]) -> list[dict
     return per_sample_dict_list
 
 
-@torch.no_grad()
+#@torch.no_grad()
 def compute_full_data_and_summary(
     configs,
     pae_logits,
@@ -772,7 +772,7 @@ def compute_full_data_and_summary(
     return summary_confidence, full_data
 
 
-@torch.no_grad()
+#@torch.no_grad()
 def compute_confidence_summary(
     configs,
     pae_logits,

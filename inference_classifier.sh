@@ -15,13 +15,14 @@
 
 export LAYERNORM_TYPE=fast_layernorm
 
-N_sample=5
+N_sample=1
 N_step=200
 N_cycle=10
 seed=101
 use_deepspeed_evo_attention=true
 input_json_path="./examples/example_2.json"
 # wget -P /af3-dev/release_model/ https://af3-dev.tos-cn-beijing.volces.com/release_model/model_v1.pt
+#load_checkpoint_path="/home/fs01/wc648/protenix/output/protenix_finetune_classifier_2K_screen_2_20250602_080906/checkpoints/799.pt"
 load_checkpoint_path="/home/fs01/wc648/protenix/af3-dev/release_model/model_v1.pt"
 dump_dir="./output"
 

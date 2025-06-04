@@ -118,6 +118,44 @@ class Protenix(nn.Module):
         nn.init.zeros_(self.linear_no_bias_z_cycle.weight)
         nn.init.zeros_(self.linear_no_bias_s.weight)
 
+    def get_classifier_input(self, summary_confidence, full_data, ligand_length):
+        summary_confidence_keys = ['gpde', 'ranking_score', 'chain_ptm', 'chain_iptm', 'chain_plddt','has_clash','disorder']
+        full_data_keys = ['token_pair_pae', 'token_pair_pde', 'contact_probs']
+
+        #print('token_pair_pae',full_data[0]['token_pair_pae'].shape)
+        #print('token_pair_pde',full_data[0]['token_pair_pde'].shape)
+        #print('contact_probs',full_data[0]['contact_probs'].shape)
+
+        if self.configs.model.confidence_classifier.use_intersted_atom_mask:
+            summary_confidence_keys.extend(['pb_ranking_score'])
+
+        features = []
+        for sample_conf, sample_full in zip(summary_confidence, full_data):
+            # Flatten and concatenate all specified keys from summary_confidence
+            summary_feats = [
+                (sample_conf[k].flatten() / 100 if k == 'chain_plddt' else sample_conf[k].flatten()) if torch.is_tensor(sample_conf[k])
+                else (torch.tensor(sample_conf[k]).flatten() / 100 if k == 'chain_plddt' else torch.tensor(sample_conf[k]).flatten())
+                for k in summary_confidence_keys
+            ]
+            # Flatten and concatenate all specified keys from full_data
+            full_feats = [
+                torch.cat([
+                    sample_full[k][-ligand_length:, :].flatten(),
+                    sample_full[k][:-ligand_length, -ligand_length:].flatten()
+                ], dim=0) if torch.is_tensor(sample_full[k])
+                else torch.cat([
+                    torch.tensor(sample_full[k][-ligand_length:, :]).flatten(),
+                    torch.tensor(sample_full[k][:-ligand_length, -ligand_length:]).T.flatten()
+                ], dim=0)
+                for k in full_data_keys
+            ]
+            # Concatenate all features for this sample
+            features.append(torch.cat(summary_feats + full_feats, dim=-1))
+
+        # Stack all sample feature vectors into a single tensor with shape [N_sample, feat_dim]
+        confidence_scores = torch.stack(features, dim=0)
+        return confidence_scores
+
     def get_pairformer_output(
         self,
         input_feature_dict: dict[str, Any],
@@ -346,7 +384,7 @@ class Protenix(nn.Module):
             pred_dicts.append(pred_dict)
             log_dicts.append(log_dict)
             time_trackers.append(time_tracker)
-        print(f"Keys in pred_dicts: {[list(x.keys()) for x in pred_dicts]}")
+        #print(f"Keys in pred_dicts: {[list(x.keys()) for x in pred_dicts]}")
 
         # Combine outputs of multiple models
         def _cat(dict_list, key):
@@ -367,6 +405,8 @@ class Protenix(nn.Module):
 
         if self.configs['classifier']:
             all_pred_dict['binder']=_cat(pred_dicts, "binder")
+            if self.configs.train_classifier_by_inference:
+                all_pred_dict['classifier_feats'] = _cat(pred_dicts, "classifier_feats")
 
         #print('all_pred_dict',all_pred_dict)
 
@@ -546,29 +586,11 @@ class Protenix(nn.Module):
 
         if self.configs['classifier']:
 
-            keys = [
-                'plddt', 'gpde', 'ptm', 'iptm', 
-                'chain_ptm', 'chain_iptm', 
-                'chain_pair_iptm', 'chain_pair_iptm_global', 
-                'chain_plddt', 'chain_pair_plddt', 
-                'has_clash', 'disorder'
-            ]
-
-            if self.configs['model']['confidence_classifier']['use_intersted_atom_mask']:
-                keys.extend(['pb_ranking_score'])
-            # For each sample in summary_confidence, flatten and concatenate all specified keys.
-            features = [
-                torch.cat(
-                    [sample[k].flatten() if torch.is_tensor(sample[k]) 
-                    else torch.tensor(sample[k]).flatten() for k in keys],
-                    dim=-1
-                )
-                for sample in pred_dict["summary_confidence"]
-            ]
-            
-            # Stack all sample feature vectors into a single tensor with shape [5, feature_dim]
-            confidence_scores = torch.stack(features, dim=0)
+            confidence_scores = self.get_classifier_input(pred_dict["summary_confidence"], pred_dict["full_data"], self.configs.model.confidence_classifier.ligand_length)
             print('confidence_scores_shape:',confidence_scores.shape)
+
+            if self.configs.train_classifier_by_inference:
+                pred_dict['classifier_feats'] = confidence_scores
 
             # Forward pass on GPU
             confidence_output = self.run_confidence_classifier(confidence_scores)
@@ -625,34 +647,61 @@ class Protenix(nn.Module):
             chunk_size=chunk_size,
         )
 
+        #print('s_inputs.grad_fn',s_inputs.grad_fn)
+        #print('s.grad_fn',s.grad_fn)
+        #print('z.grad_fn',z.grad_fn)
+
         log_dict = {}
         pred_dict = {}
 
-        # Mini-rollout: used for confidence and label permutation
-        with torch.no_grad():
+        if self.configs['classifier']:
+            # Grad is needed for classifier
             # [..., 1, N_atom, 3]
-            N_sample_mini_rollout = self.configs.sample_diffusion[
-                "N_sample_mini_rollout"
-            ]  # =1
-            N_step_mini_rollout = self.configs.sample_diffusion["N_step_mini_rollout"]
+                N_sample_mini_rollout = self.configs.sample_diffusion[
+                    "N_sample_mini_rollout"
+                ]  # =1
+                N_step_mini_rollout = self.configs.sample_diffusion["N_step_mini_rollout"]
 
-            coordinate_mini = self.sample_diffusion(
-                denoise_net=self.diffusion_module,
-                input_feature_dict=input_feature_dict,
-                s_inputs=s_inputs.detach(),
-                s_trunk=s.detach(),
-                z_trunk=z.detach(),
-                N_sample=N_sample_mini_rollout,
-                noise_schedule=self.inference_noise_scheduler(
-                    N_step=N_step_mini_rollout,
-                    device=s_inputs.device,
-                    dtype=s_inputs.dtype,
-                ),
-            )
-            coordinate_mini.detach_()
-            pred_dict["coordinate_mini"] = coordinate_mini
+                coordinate_mini = self.sample_diffusion(
+                    denoise_net=self.diffusion_module,
+                    input_feature_dict=input_feature_dict,
+                    s_inputs=s_inputs,
+                    s_trunk=s,
+                    z_trunk=z,
+                    N_sample=N_sample_mini_rollout,
+                    noise_schedule=self.inference_noise_scheduler(
+                        N_step=N_step_mini_rollout,
+                        device=s_inputs.device,
+                        dtype=s_inputs.dtype,
+                    ),
+                )
+                #coordinate_mini.detach_()
+                pred_dict["coordinate_mini"] = coordinate_mini
+        else:
+            # Mini-rollout: used for confidence and label permutation
+            with torch.no_grad():
+                # [..., 1, N_atom, 3]
+                N_sample_mini_rollout = self.configs.sample_diffusion[
+                    "N_sample_mini_rollout"
+                ]  # =1
+                N_step_mini_rollout = self.configs.sample_diffusion["N_step_mini_rollout"]
 
-            if not self.configs['classifier']:
+                coordinate_mini = self.sample_diffusion(
+                    denoise_net=self.diffusion_module,
+                    input_feature_dict=input_feature_dict,
+                    s_inputs=s_inputs.detach(),
+                    s_trunk=s.detach(),
+                    z_trunk=z.detach(),
+                    N_sample=N_sample_mini_rollout,
+                    noise_schedule=self.inference_noise_scheduler(
+                        N_step=N_step_mini_rollout,
+                        device=s_inputs.device,
+                        dtype=s_inputs.dtype,
+                    ),
+                )
+                coordinate_mini.detach_()
+                pred_dict["coordinate_mini"] = coordinate_mini
+
                 # Permute ground truth to match mini-rollout prediction
                 label_dict, perm_log_dict = (
                     symmetric_permutation.permute_label_to_match_mini_rollout(
@@ -663,6 +712,7 @@ class Protenix(nn.Module):
                     )
                 )
                 log_dict.update(perm_log_dict)
+        #print('coordinate_mini.grad_fn',pred_dict["coordinate_mini"].grad_fn)
 
         # Confidence: use mini-rollout prediction, and detach token embeddings
         plddt_pred, pae_pred, pde_pred, resolved_pred = self.run_confidence_head(
@@ -688,7 +738,7 @@ class Protenix(nn.Module):
             }
         )
 
-        #print('plddt.shape',pred_dict['plddt'].shape)
+        #print('plddt.shape',pred_dict['plddt'].grad_fn)
         #print('coordinate_mini',coordinate_mini.shape)
         #print('asym_id',input_feature_dict["asym_id"])
 
@@ -698,18 +748,22 @@ class Protenix(nn.Module):
             #plddt_flattened = pred_dict["plddt"].view(pred_dict["plddt"].size(0), -1)
             #pae_flattened = pred_dict["pae"].view(pred_dict["pae"].size(0), -1)  # Flatten last three axes
             #pde_flattened = pred_dict["pde"].view(pred_dict["pde"].size(0), -1)  # Flatten last three axes
+            #contact_probs_flattened = pred_dict["contact_probs"].view(pred_dict["contact_probs"].size(0), -1)  # Flatten last three axes
             #resolved_flattened = pred_dict["resolved"].view(pred_dict["resolved"].size(0), -1)
-            #confidence_scores = torch.cat([plddt_flattened, pae_flattened, pde_flattened, resolved_flattened], dim=-1)
+            #confidence_scores = torch.cat([pae_flattened, pde_flattened,contact_probs_flattened], dim=-1)
 
             # Modified code to reduce dimensionality:
             # Assuming PAE and PDE are [batch, N_res, N_res], take mean across one dimension
             #pae_mean = pred_dict["pae"].mean(dim=-1)  # [batch, N_res]
             #pde_mean = pred_dict["pde"].mean(dim=-1)  # [batch, N_res]
             # Assuming plddt and resolved are [batch, N_res]
+           
             pred_dict["contact_probs"] = sample_confidence.compute_contact_prob(
             distogram_logits=self.distogram_head(z),
             **sample_confidence.get_bin_params(self.configs.loss.distogram),
             )  # [N_token, N_token]
+            #print('contact_probs.grad_fn',pred_dict["contact_probs"].grad_fn)
+
             if label_dict is None or not self.configs['model']['confidence_classifier']['use_intersted_atom_mask']:
                 interested_atom_mask = None
             else:
@@ -744,30 +798,21 @@ class Protenix(nn.Module):
                 mol_id=input_feature_dict["mol_id"],
                 elements_one_hot=input_feature_dict["ref_element"]
                 )
+            #print('summary_confidence.grad_fn',summary_confidence.grad_fn)
+            #print('full_data.grad_fn',full_data.grad_fn)
             print('summary_confidence:',summary_confidence)
-            print('full_data:',full_data[0].keys())
+            #print('full_data:',full_data[0].keys())
 
-            keys = [
-                'plddt', 'gpde', 'ptm', 'iptm', 
-                'chain_ptm', 'chain_iptm', 
-                'chain_pair_iptm', 'chain_pair_iptm_global', 
-                'chain_plddt', 'chain_pair_plddt', 
-                'has_clash', 'disorder'
-            ]
-            if self.configs['model']['confidence_classifier']['use_intersted_atom_mask']:
-                 keys.extend(['pb_ranking_score'])
+            confidence_scores = self.get_classifier_input(summary_confidence, full_data, self.configs.model.confidence_classifier.ligand_length)
+            # if torch.argmax(label_dict, dim=-1) == 0:
+            #     gen1 = torch.Generator().manual_seed(0)
+            #     random_tensor1 = torch.randn(1, 24106, generator=gen1).to(confidence_scores.device)
+            #     confidence_scores = random_tensor1
+            # else:
+            #     gen2 = torch.Generator().manual_seed(1)
+            #     random_tensor2 = torch.randn(1, 24106, generator=gen2).to(confidence_scores.device)
+            #     confidence_scores = random_tensor2
 
-            # For each sample in summary_confidence, flatten and concatenate all specified keys.
-            features = [
-                torch.cat(
-                    [sample[k].flatten() if torch.is_tensor(sample[k]) 
-                    else torch.tensor(sample[k]).flatten() for k in keys],
-                    dim=-1
-                )
-                for sample in summary_confidence
-            ]
-            # Stack all sample feature vectors into a single tensor with shape [5, feature_dim]
-            confidence_scores = torch.stack(features, dim=0)
             print('confidence_scores_shape:',confidence_scores.shape)
 
             # Forward pass on GPU
