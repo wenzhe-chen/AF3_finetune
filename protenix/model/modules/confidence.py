@@ -20,6 +20,7 @@ import torch.nn as nn
 
 from protenix.model.modules.pairformer import PairformerStack
 from protenix.model.modules.primitives import LinearNoBias
+from protenix.model.modules.deepsettransformer import DeepSetTransformerPooling
 from protenix.model.utils import broadcast_token_to_atom, one_hot
 from protenix.openfold_local.model.primitives import LayerNorm
 from protenix.utils.torch_utils import cdist
@@ -47,6 +48,8 @@ class ConfidenceHead(nn.Module):
         distance_bin_end: float = 21.375,
         distance_bin_step: float = 1.25,
         stop_gradient: bool = True,
+        classifier_head: bool = False,
+        hidden_channels: int = 64,
     ) -> None:
         """
         Args:
@@ -77,6 +80,7 @@ class ConfidenceHead(nn.Module):
         self.b_resolved = b_resolved
         self.max_atoms_per_token = max_atoms_per_token
         self.stop_gradient = stop_gradient
+        self.classifier_head = classifier_head
         self.linear_no_bias_s1 = LinearNoBias(
             in_features=self.c_s_inputs, out_features=self.c_z
         )
@@ -118,6 +122,24 @@ class ConfidenceHead(nn.Module):
         self.layernorm_s_trunk = LayerNorm(self.c_s)
         self.linear_no_bias_z_trunk = LinearNoBias(self.c_z, self.c_z)
         self.layernorm_z_trunk = LayerNorm(self.c_z)
+
+        # DeepSet Transformer for classification
+        if self.classifier_head:
+            self.hidden_channels = hidden_channels
+            # For z_pair pooling (pairwise features)
+            self.z_pair_pooling = DeepSetTransformerPooling(
+                n_in=self.c_z, 
+                n_hidden_channels=self.hidden_channels, 
+                num_heads=8
+            )
+            # For atom-level features (a)
+            self.atom_pooling = DeepSetTransformerPooling(
+                n_in=self.c_s, 
+                n_hidden_channels=self.hidden_channels, 
+                num_heads=8
+            )
+            # Final classification layer
+            self.classifier = nn.Linear(2*self.hidden_channels, 1)  # 2*64 inputs: z_pair_score + atom_score
 
         with torch.no_grad():
             # Zero init for output layer (before softmax) to zero
@@ -164,11 +186,19 @@ class ConfidenceHead(nn.Module):
             chunk_size (Optional[int], optional): Chunk size for memory-efficient operations. Defaults to None.
 
         Returns:
-            tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-                - plddt_preds: Predicted pLDDT scores [..., N_sample, N_atom, plddt_bins].
-                - pae_preds: Predicted PAE scores [..., N_sample, N_token, N_token, pae_bins].
-                - pde_preds: Predicted PDE scores [..., N_sample, N_token, N_token, pde_bins].
-                - resolved_preds: Predicted resolved scores [..., N_sample, N_atom, 2].
+            If classifier_head=False:
+                tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+                    - plddt_preds: Predicted pLDDT scores [..., N_sample, N_atom, plddt_bins].
+                    - pae_preds: Predicted PAE scores [..., N_sample, N_token, N_token, pae_bins].
+                    - pde_preds: Predicted PDE scores [..., N_sample, N_token, N_token, pde_bins].
+                    - resolved_preds: Predicted resolved scores [..., N_sample, N_atom, 2].
+            If classifier_head=True:
+                tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+                    - plddt_preds: Predicted pLDDT scores [..., N_sample, N_atom, plddt_bins].
+                    - pae_preds: Predicted PAE scores [..., N_sample, N_token, N_token, pae_bins].
+                    - pde_preds: Predicted PDE scores [..., N_sample, N_token, N_token, pde_bins].
+                    - resolved_preds: Predicted resolved scores [..., N_sample, N_atom, 2].
+                    - classification_scores: Classification scores [N_sample, 1].
         """
 
         if self.stop_gradient:
@@ -194,21 +224,27 @@ class ConfidenceHead(nn.Module):
             torch.cuda.empty_cache()
 
         plddt_preds, pae_preds, pde_preds, resolved_preds = [], [], [], []
+        classification_scores = [] if self.classifier_head else None
         for i in range(N_sample):
-            plddt_pred, pae_pred, pde_pred, resolved_pred = (
-                self.memory_efficient_forward(
-                    input_feature_dict=input_feature_dict,
-                    s_trunk=s_trunk,
-                    z_pair=z_trunk,
-                    pair_mask=pair_mask,
-                    x_pred_rep_coords=x_pred_rep_coords[..., i, :, :],
-                    use_memory_efficient_kernel=use_memory_efficient_kernel,
-                    use_deepspeed_evo_attention=use_deepspeed_evo_attention,
-                    use_lma=use_lma,
-                    inplace_safe=inplace_safe,
-                    chunk_size=chunk_size,
-                )
+            outputs = self.memory_efficient_forward(
+                input_feature_dict=input_feature_dict,
+                s_trunk=s_trunk,
+                z_pair=z_trunk,
+                pair_mask=pair_mask,
+                x_pred_rep_coords=x_pred_rep_coords[..., i, :, :],
+                use_memory_efficient_kernel=use_memory_efficient_kernel,
+                use_deepspeed_evo_attention=use_deepspeed_evo_attention,
+                use_lma=use_lma,
+                inplace_safe=inplace_safe,
+                chunk_size=chunk_size,
             )
+            
+            if self.classifier_head:
+                plddt_pred, pae_pred, pde_pred, resolved_pred, classification_score = outputs
+                classification_scores.append(classification_score)
+            else:
+                plddt_pred, pae_pred, pde_pred, resolved_pred = outputs
+                
             if z_trunk.shape[-2] > 2000 and (not self.training):
                 # cpu offload pae_preds/pde_preds
                 pae_pred = pae_pred.cpu()
@@ -231,7 +267,12 @@ class ConfidenceHead(nn.Module):
         resolved_preds = torch.stack(
             resolved_preds, dim=-3
         )  # [..., N_sample, N_atom, 2]
-        return plddt_preds, pae_preds, pde_preds, resolved_preds
+        
+        if self.classifier_head:
+            classification_scores = torch.stack(classification_scores, dim=0)  # [N_sample, 1]
+            return plddt_preds, pae_preds, pde_preds, resolved_preds, classification_scores
+        else:
+            return plddt_preds, pae_preds, pde_preds, resolved_preds
 
     def memory_efficient_forward(
         self,
@@ -245,12 +286,27 @@ class ConfidenceHead(nn.Module):
         use_lma: bool = False,
         inplace_safe: bool = False,
         chunk_size: Optional[int] = None,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor] | tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Args:
             ...
             x_pred_coords (torch.Tensor): predicted coordinates
                 [..., N_atoms, 3] # Note: N_sample = 1 for avoiding CUDA OOM
+                
+        Returns:
+            If classifier_head=False:
+                tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+                    - plddt_pred: Predicted pLDDT scores [N_atoms, plddt_bins]
+                    - pae_pred: Predicted PAE scores [N_tokens, N_tokens, pae_bins]
+                    - pde_pred: Predicted PDE scores [N_tokens, N_tokens, pde_bins]
+                    - resolved_pred: Predicted resolved scores [N_atoms, 2]
+            If classifier_head=True:
+                tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+                    - plddt_pred: Predicted pLDDT scores [N_atoms, plddt_bins]
+                    - pae_pred: Predicted PAE scores [N_tokens, N_tokens, pae_bins]
+                    - pde_pred: Predicted PDE scores [N_tokens, N_tokens, pde_bins]
+                    - resolved_pred: Predicted resolved scores [N_atoms, 2]
+                    - classification_score: Classification score [1]
         """
         # Embed pair distances of representative atoms:
         distance_pred = cdist(
@@ -292,4 +348,22 @@ class ConfidenceHead(nn.Module):
         )
         if not self.training and z_pair.shape[-2] > 2000:
             torch.cuda.empty_cache()
-        return plddt_pred, pae_pred, pde_pred, resolved_pred
+
+        if self.classifier_head:
+            # Prepare z_pair for pooling: flatten to [N_tokens*N_tokens, c_z]
+            # Only use upper triangular part to avoid duplicates
+            z_pair_upper = torch.triu(z_pair, diagonal=1)  # [N_tokens, N_tokens, c_z]
+            z_pair_flat = z_pair_upper.reshape(-1, self.c_z)  # [N_tokens*N_tokens, c_z]
+            # Remove zero rows (from lower triangular part)
+            z_pair_nonzero = z_pair_flat[z_pair_flat.sum(dim=1) != 0]  # [N_nonzero, c_z]
+            
+            # Pool z_pair features
+            z_pair_score = self.z_pair_pooling(z_pair_nonzero.unsqueeze(0))[0]  # [64]
+            # Pool atom-level features
+            atom_score = self.atom_pooling(a.unsqueeze(0))[0]  # [64]
+            # Combine scores for final classification
+            combined_scores = torch.cat([z_pair_score, atom_score], dim=0)  # [128]
+            classification_score = self.classifier(combined_scores.unsqueeze(0))[0]  # [1]
+            return plddt_pred, pae_pred, pde_pred, resolved_pred, classification_score
+        else:
+            return plddt_pred, pae_pred, pde_pred, resolved_pred

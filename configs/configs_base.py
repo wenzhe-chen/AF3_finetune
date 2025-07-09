@@ -22,7 +22,7 @@ from protenix.config.extend_types import (
 )
 
 basic_configs = {
-    "classifier": True,
+    "classifier": False,
     "project": RequiredValue(str),
     "run_name": RequiredValue(str),
     "base_dir": RequiredValue(str),
@@ -238,6 +238,9 @@ model_configs = {
             "distance_bin_end": 21.375,
             "distance_bin_step": 1.25,
             "stop_gradient": False,
+            # for classifier
+            "classifier_head": False,
+            "hidden_channels": 64,
         },
         "distogram_head": {
             "c_z": GlobalConfigValue("c_z"),

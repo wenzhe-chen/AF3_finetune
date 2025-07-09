@@ -162,6 +162,7 @@ class AF3Trainer(object):
         loss = loss_fn(logits, labels)
         #print ('loss',loss)
         accuracy = (logits.argmax(dim=-1) == labels).float().mean()
+        #area_under_curve = roc_auc_score(labels, torch.softmax(logits, dim=1)[:,1])
         loss_dict = {'loss': loss, 'classification_loss': loss, 'accuracy': accuracy}
         print('loss_dict',loss_dict)
         return loss, loss_dict
@@ -425,7 +426,7 @@ class AF3Trainer(object):
             total_batch_num = len(test_dl)
             for index, batch in enumerate(tqdm(test_dl)):
                 batch = to_device(batch[0], self.device)
-                pid = batch["sample_name"]
+                pid = batch["name"]
 
                 if index + 1 == total_batch_num and DIST_WRAPPER.world_size > 1:
                     # Gather all pids across ranks for avoiding duplicated evaluations when drop_last = False

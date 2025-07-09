@@ -73,32 +73,25 @@ def get_inference_dataloader(configs: Any) -> DataLoader:
     Returns:
         A DataLoader object configured for inference.
     """ 
-    if configs.train_classifier_by_inference:
-        data_config = configs.data
+    data_config = configs.data
 
-        # not implement for multiple datasets
-        train_name = data_config.train_sets[0]
-        config_dict = data_config[train_name].to_dict()
+    # not implement for multiple datasets
+    config_dict = data_config['classifier_table']
 
-        #print('config_dict',config_dict)
+    #print('config_dict',config_dict)
 
-        inference_dataset = InferenceDataset(
-            input_json_path=configs.input_json_path,
-            dump_dir=configs.dump_dir,
-            use_msa=configs.use_msa,
-            precomputed_msa_dir=config_dict["base_info"]["precomputed_msa_dir"],
-            msa_save_dir=config_dict["base_info"]["msa_save_dir"],
-            msa_search_tool=config_dict["base_info"]["msa_search_tool"],
-            msa_pairing_db=config_dict["base_info"]["msa_pairing_db"],
-            msa_pairing_db_fpath=config_dict["base_info"]["msa_pairing_db_fpath"],
-            msa_non_pairing_db_fpath=config_dict["base_info"]["msa_non_pairing_db_fpath"],
-        )
-    else:
-        inference_dataset = InferenceDataset(
-            input_json_path=configs.input_json_path,
-            dump_dir=configs.dump_dir,
-            use_msa=configs.use_msa,
-        )
+    inference_dataset = InferenceDataset(
+        input_json_path=configs.input_json_path,
+        dump_dir=configs.dump_dir,
+        use_msa=configs.use_msa,
+        precomputed_msa_dir=config_dict["base_info"]["precomputed_msa_dir"],
+        msa_save_dir=config_dict["base_info"]["msa_save_dir"],
+        msa_search_tool=config_dict["base_info"]["msa_search_tool"],
+        msa_pairing_db=config_dict["base_info"]["msa_pairing_db"],
+        msa_pairing_db_fpath=config_dict["base_info"]["msa_pairing_db_fpath"],
+        msa_non_pairing_db_fpath=config_dict["base_info"]["msa_non_pairing_db_fpath"],
+        train_classifier_by_inference=configs.train_classifier_by_inference,
+    )
 
     sampler = DistributedSampler(
         dataset=inference_dataset,
@@ -135,6 +128,7 @@ class InferenceDataset(Dataset):
         self.msa_pairing_db = kwargs.get("msa_pairing_db", "uniprot")
         self.msa_pairing_db_fpath = kwargs.get("msa_pairing_db_fpath", "/home/fs01/wc648/RoseTTAFold-All-Atom/uniprot/uniprot_sprot.fasta")
         self.msa_non_pairing_db_fpath = kwargs.get("msa_non_pairing_db_fpath", "/home/fs01/wc648/RoseTTAFold-All-Atom/mgnify/mgy_clusters_2018_12.fa")
+        self.train_classifier_by_inference = kwargs.get("train_classifier_by_inference", False)
 
         if self.input_json_path.endswith(".json"):
             with open(self.input_json_path, "r") as f:
@@ -260,8 +254,8 @@ class InferenceDataset(Dataset):
 
         data = {}
         data["input_feature_dict"] = feat
-
-        data["label_dict"] = int(single_sample_dict["label"])
+        if self.train_classifier_by_inference:
+            data["label_dict"] = int(single_sample_dict["label"])
 
         # Add dimension related items
         N_token = feat["token_index"].shape[0]

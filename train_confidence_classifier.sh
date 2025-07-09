@@ -48,7 +48,8 @@ python3 runner/train_confidence_classifier.py \
     --batch_size 1024 \
     --epochs 10000 \
     --lr 0.0005 \
-    --output ./output/confidence_classifier_2K_screen.pt \
+    --output ./output/confidence_classifier_2K_screen_test.pt \
     --number_of_chains 2 \
     --patience 1000 \
+    --pretrained_model /home/fs01/wc648/protenix/output/confidence_classifier_2K_screen.pt \
     # Add --use_intersted_atom_mask if needed

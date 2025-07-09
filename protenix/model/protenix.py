@@ -594,6 +594,7 @@ class Protenix(nn.Module):
 
             # Forward pass on GPU
             confidence_output = self.run_confidence_classifier(confidence_scores)
+            print('confidence_output:',torch.softmax(confidence_output, dim=1)[:, 1])
 
             # Store confidence-based classification output
             pred_dict['binder'] = confidence_output
@@ -601,6 +602,7 @@ class Protenix(nn.Module):
 
             # Store confidence-based classification output in summary_confidence for the output.json
             for i in range (len(pred_dict["summary_confidence"])):
+                 pred_dict["summary_confidence"][i]['prob']= torch.softmax(confidence_output, dim=1)[i, 1]
                  pred_dict["summary_confidence"][i]['binder']= torch.argmax(pred_dict['binder'][i], dim=-1)
             
             # #print(pred_dict["summary_confidence"][0])

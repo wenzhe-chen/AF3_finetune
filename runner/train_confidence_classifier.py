@@ -37,6 +37,7 @@ def parse_args():
     parser.add_argument('--number_of_chains', type=int, default=2, help='Number of chains')
     parser.add_argument('--use_intersted_atom_mask', action='store_true', help='Use interested atom mask')
     parser.add_argument('--patience', type=int, default=5, help='Early stopping patience (epochs)')
+    parser.add_argument('--pretrained_model', type=str, default=None, help='Path to a pre-trained model to skip training and only run evaluation/plotting')
     return parser.parse_args()
 
 
@@ -99,96 +100,98 @@ def main():
         criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
-    # Training loop
-    best_acc = 0.0
-    best_epoch = 0
-    patience_counter = 0
-    for epoch in range(args.epochs):
-        model.train()
-        total_loss = 0
-        for xb, yb in train_loader:
-            xb, yb = xb.to(device, dtype=torch.float32), yb.to(device)
-            optimizer.zero_grad()
-            out = model(xb)
-            if model.output_units == 1:
-                yb = yb.float()
-                loss = criterion(out.squeeze(), yb)
-            else:
-                if yb.ndim > 1:
-                    yb = yb.argmax(dim=1)
-                loss = criterion(out, yb)
-            loss.backward()
-            optimizer.step()
-            total_loss += loss.item() * xb.size(0)
-        avg_loss = total_loss / len(train_loader.dataset)
-        if (epoch + 1) % 100 == 0 or (epoch + 1) == args.epochs:
-            print(f"Epoch {epoch+1}/{args.epochs} - Train Loss: {avg_loss:.4f}")
-        wandb.log({"train_loss": avg_loss, "epoch": epoch + 1})
-
-        # Eval
-        model.eval()
-        correct, total = 0, 0
-        all_labels = []
-        all_probs = []
-        with torch.no_grad():
-            for xb, yb in eval_loader:
+    if args.pretrained_model is not None:
+        # Load the pretrained model
+        model.load_state_dict(torch.load(args.pretrained_model, map_location=device))
+        print(f"Loaded pretrained model from {args.pretrained_model}")
+    else:
+        best_acc = 0.0
+        best_epoch = 0
+        patience_counter = 0
+        for epoch in range(args.epochs):
+            model.train()
+            total_loss = 0
+            for xb, yb in train_loader:
                 xb, yb = xb.to(device, dtype=torch.float32), yb.to(device)
+                optimizer.zero_grad()
                 out = model(xb)
                 if model.output_units == 1:
-                    probs = torch.sigmoid(out.squeeze())
-                    preds = (probs > 0.5).long()
-                    all_probs.extend(probs.cpu().numpy().reshape(-1))
-                    all_labels.extend(yb.cpu().numpy().reshape(-1))
+                    yb = yb.float()
+                    loss = criterion(out.squeeze(), yb)
                 else:
-                    probs = torch.softmax(out, dim=1)
-                    preds = out.argmax(dim=1)
                     if yb.ndim > 1:
                         yb = yb.argmax(dim=1)
-                    all_probs.extend(probs.cpu().numpy())
-                    all_labels.extend(yb.cpu().numpy())
-                correct += (preds == yb).sum().item()
-                total += yb.size(0)
-        acc = correct / total
-        if (epoch + 1) % 100 == 0 or (epoch + 1) == args.epochs:
-            print(f"Epoch {epoch+1}/{args.epochs} - Eval Acc: {acc:.4f}")
-        wandb.log({"eval_acc": acc, "epoch": epoch + 1})
+                    loss = criterion(out, yb)
+                loss.backward()
+                optimizer.step()
+                total_loss += loss.item() * xb.size(0)
+            avg_loss = total_loss / len(train_loader.dataset)
+            if (epoch + 1) % 100 == 0 or (epoch + 1) == args.epochs:
+                print(f"Epoch {epoch+1}/{args.epochs} - Train Loss: {avg_loss:.4f}")
+            wandb.log({"train_loss": avg_loss, "epoch": epoch + 1})
 
-        # Compute and log AUC
-        try:
-            if model.output_units == 1:
-                area_under_curve = roc_auc_score(all_labels, all_probs)
+            # Eval
+            model.eval()
+            correct, total = 0, 0
+            all_labels = []
+            all_probs = []
+            with torch.no_grad():
+                for xb, yb in eval_loader:
+                    xb, yb = xb.to(device, dtype=torch.float32), yb.to(device)
+                    out = model(xb)
+                    if model.output_units == 1:
+                        probs = torch.sigmoid(out.squeeze())
+                        preds = (probs > 0.5).long()
+                        all_probs.extend(probs.cpu().numpy().reshape(-1))
+                        all_labels.extend(yb.cpu().numpy().reshape(-1))
+                    else:
+                        probs = torch.softmax(out, dim=1)
+                        preds = out.argmax(dim=1)
+                        if yb.ndim > 1:
+                            yb = yb.argmax(dim=1)
+                        all_probs.extend(probs.cpu().numpy())
+                        all_labels.extend(yb.cpu().numpy())
+                    correct += (preds == yb).sum().item()
+                    total += yb.size(0)
+            acc = correct / total
+            if (epoch + 1) % 100 == 0 or (epoch + 1) == args.epochs:
+                print(f"Epoch {epoch+1}/{args.epochs} - Eval Acc: {acc:.4f}")
+            wandb.log({"eval_acc": acc, "epoch": epoch + 1})
+
+            # Compute and log AUC
+            try:
+                if model.output_units == 1:
+                    area_under_curve = roc_auc_score(all_labels, all_probs)
+                else:
+                    area_under_curve = roc_auc_score(np.array(all_labels), np.array(all_probs)[:,1], multi_class='ovr')
+                if (epoch + 1) % 100 == 0 or (epoch + 1) == args.epochs:
+                    print(f"Epoch {epoch+1}/{args.epochs} - Eval AUC: {area_under_curve:.4f}")
+                wandb.log({"eval_auc": area_under_curve, "epoch": epoch + 1})
+            except Exception as e:
+                if (epoch + 1) % 100 == 0 or (epoch + 1) == args.epochs:
+                    print(f"AUC calculation failed: {e}")
+                wandb.log({"eval_auc": None, "epoch": epoch + 1})
+
+            # Early stopping and best model saving
+            if acc > best_acc:
+                best_acc = acc
+                best_epoch = epoch + 1
+                patience_counter = 0
+                torch.save(model.state_dict(), args.output)
+                print(f"[Best] Model saved to {args.output} at epoch {epoch+1} with acc {acc:.4f}")
+                wandb.save(args.output)
             else:
-                #print('all_labels',np.array(all_labels).shape)
-                #print('all_probs',np.array(all_probs).shape)
-                area_under_curve = roc_auc_score(np.array(all_labels), np.array(all_probs)[:,1], multi_class='ovr')
-            if (epoch + 1) % 100 == 0 or (epoch + 1) == args.epochs:
-                print(f"Epoch {epoch+1}/{args.epochs} - Eval AUC: {area_under_curve:.4f}")
-            wandb.log({"eval_auc": area_under_curve, "epoch": epoch + 1})
-        except Exception as e:
-            if (epoch + 1) % 100 == 0 or (epoch + 1) == args.epochs:
-                print(f"AUC calculation failed: {e}")
-            wandb.log({"eval_auc": None, "epoch": epoch + 1})
+                patience_counter += 1
+                if patience_counter >= args.patience:
+                    print(f"Early stopping at epoch {epoch+1}. Best acc: {best_acc:.4f} at epoch {best_epoch}")
+                    break
 
-        # Early stopping and best model saving
-        if acc > best_acc:
-            best_acc = acc
-            best_epoch = epoch + 1
-            patience_counter = 0
-            torch.save(model.state_dict(), args.output)
-            print(f"[Best] Model saved to {args.output} at epoch {epoch+1} with acc {acc:.4f}")
-            wandb.save(args.output)
-        else:
-            patience_counter += 1
-            if patience_counter >= args.patience:
-                print(f"Early stopping at epoch {epoch+1}. Best acc: {best_acc:.4f} at epoch {best_epoch}")
-                break
+        print(f"Best model saved to {args.output} with acc {best_acc:.4f} at epoch {best_epoch}")
+        # Load best model for evaluation/plotting
+        model.load_state_dict(torch.load(args.output, map_location=device))
+        model.eval()
 
-    print(f"Best model saved to {args.output} with acc {best_acc:.4f} at epoch {best_epoch}")
-    
-    # --- Draw ROC curve using the best model ---
-    # Load best model
-    model.load_state_dict(torch.load(args.output, map_location=device))
-    model.eval()
+    # --- Draw ROC curve using the best or loaded model ---
     all_labels = []
     all_probs = []
     with torch.no_grad():
@@ -211,8 +214,11 @@ def main():
     all_probs = np.array(all_probs)
     plt.figure()
     # Binary ROC
-    fpr, tpr, _ = roc_curve(all_labels, all_probs[:,1])
+    fpr, tpr, thresholds = roc_curve(all_labels, all_probs[:,1])
     roc_auc = auc(fpr, tpr)
+
+    # Save ROC curve data for later replotting
+    np.savez('./output/roc_curve_classifier_only.npz', fpr=fpr, tpr=tpr, thresholds=thresholds, roc_auc=roc_auc)
 
     plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {roc_auc:.2f})')
     plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
@@ -224,8 +230,8 @@ def main():
     plt.legend(loc="lower right")
     
     plt.tight_layout()
-    plt.savefig('./output/roc_curve.png')
-    wandb.log({"roc_curve": wandb.Image('./output/roc_curve.png')})
+    plt.savefig('./output/roc_curve_confidence_classifier.png')
+    wandb.log({"roc_curve": wandb.Image('./output/roc_curve_confidence_classifier.png')})
     plt.close()
     
     wandb.finish()
