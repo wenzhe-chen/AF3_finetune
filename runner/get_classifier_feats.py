@@ -164,7 +164,8 @@ def main(configs: Any) -> None:
     num_data = len(dataloader.dataset)
     for seed in configs.seeds:
         seed_everything(seed=seed, deterministic=True)
-        feats = []
+        a_feats = []
+        z_pair_feats = []
         labels = []
         for batch in dataloader:
             try:
@@ -197,10 +198,12 @@ def main(configs: Any) -> None:
                 #     atom_array=atom_array,
                 #     entity_poly_type=data["entity_poly_type"],
                 # )
-                print('prediction',prediction['classifier_feats'].shape)
+                print('confidence_features_a',prediction['confidence_features_a'].shape)
+                print('confidence_features_z_pair',prediction['confidence_features_z_pair'].shape)
                 print('data["label_dict"]',data["label_dict"])
                 if configs.train_classifier_by_inference:
-                    feats.append(prediction["classifier_feats"].cpu().numpy())
+                    a_feats.append(prediction["confidence_features_a"].cpu())
+                    z_pair_feats.append(prediction["confidence_features_z_pair"].cpu())
                     labels.append(data["label_dict"])
 
                 logger.info(
@@ -221,11 +224,12 @@ def main(configs: Any) -> None:
                     torch.cuda.empty_cache()
 
     if configs.train_classifier_by_inference:
-        feats = np.concatenate(feats, axis=0)
-        labels = np.array(labels)
-        print('feats',feats.shape)
-        print('labels',labels.shape)
-        torch.save(feats, os.path.join(configs.dump_dir, f'feats_{runname}.pt'))
+        # Save as lists of tensors directly
+        print('a_feats (number of samples):', len(a_feats))
+        print('z_pair_feats (number of samples):', len(z_pair_feats))
+        print('labels (number of samples):', len(labels))
+        torch.save(a_feats, os.path.join(configs.dump_dir, f'a_feats_{runname}.pt'))
+        torch.save(z_pair_feats, os.path.join(configs.dump_dir, f'z_pair_feats_{runname}.pt'))
         torch.save(labels, os.path.join(configs.dump_dir, f'labels_{runname}.pt'))
 
 

@@ -25,12 +25,13 @@ use_deepspeed_evo_attention=true
 # Usage: . train_classifier_only.sh $SLURM_ARRAY_TASK_ID
 # Define your input files here, one per array task
 input_json_paths=(
-    "/home/fs01/wc648/protenix/examples/2K_screen_0.csv"
-    "/home/fs01/wc648/protenix/examples/2K_screen_1.csv"
-    "/home/fs01/wc648/protenix/examples/2K_screen_2.csv"
-    "/home/fs01/wc648/protenix/examples/2K_screen_3.csv"
-    "/home/fs01/wc648/protenix/examples/2K_screen_4.csv"
-    "/home/fs01/wc648/protenix/examples/2K_screen_5.csv"
+    "/gpfs/data/hlin-lab/wenzhechen/applications/protenix/examples/2K_screen_test.csv"
+    "/gpfs/data/hlin-lab/wenzhechen/applications/protenix/examples/2K_screen_0.csv"
+    "/gpfs/data/hlin-lab/wenzhechen/applications/protenix/examples/2K_screen_1.csv"
+    "/gpfs/data/hlin-lab/wenzhechen/applications/protenix/examples/2K_screen_2.csv"
+    "/gpfs/data/hlin-lab/wenzhechen/applications/protenix/examples/2K_screen_3.csv"
+    "/gpfs/data/hlin-lab/wenzhechen/applications/protenix/examples/2K_screen_4.csv"
+    "/gpfs/data/hlin-lab/wenzhechen/applications/protenix/examples/2K_screen_5.csv"
 )
 
 # Get the array task ID from the first argument (default to 0 if not set)

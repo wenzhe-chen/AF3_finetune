@@ -853,8 +853,8 @@ class SequenceClassificationDataset(Dataset):
         self.msa_save_dir = kwargs.get("msa_save_dir", "./searched_msa")
         self.msa_search_tool = kwargs.get("msa_search_tool", "jackhmmer")
         self.msa_pairing_db = kwargs.get("msa_pairing_db", "uniprot")
-        self.msa_pairing_db_fpath = kwargs.get("msa_pairing_db_fpath", "/home/fs01/wc648/RoseTTAFold-All-Atom/uniprot/uniprot_sprot.fasta")
-        self.msa_non_pairing_db_fpath = kwargs.get("msa_non_pairing_db_fpath", "/home/fs01/wc648/RoseTTAFold-All-Atom/mgnify/mgy_clusters_2018_12.fa")
+        self.msa_pairing_db_fpath = kwargs.get("msa_pairing_db_fpath", "/gpfs/data/hlin-lab/wenzhechen/database/af3-dev/release_data/uniref90_2022_05.fa")
+        self.msa_non_pairing_db_fpath = kwargs.get("msa_non_pairing_db_fpath", "/gpfs/data/hlin-lab/wenzhechen/database/af3-dev/release_data/bfd-first_non_consensus_sequences.fasta")
         # Read data
         self.indices_list = read_indices_csv(indices_fpath)
         self.inputs = self.load_inputs(indices_fpath)
