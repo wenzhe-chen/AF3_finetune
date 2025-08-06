@@ -22,7 +22,7 @@ from sklearn.model_selection import train_test_split
 import wandb
 from sklearn.metrics import roc_auc_score, roc_curve, auc
 import matplotlib.pyplot as plt
-from protenix.model.modules.deepsettransformer import DeepSetTransformerPooling
+from protenix.model.modules.attentionpooling import AttentionPooling
 import glob
 from pathlib import Path
 import math
@@ -326,26 +326,24 @@ def confidence_collate_fn(batch):
     labels = torch.tensor(labels)
     return list(a_feats), list(z_pair_feats), labels
 
-class DualDeepSetClassifier(torch.nn.Module):
-    def __init__(self, a_feat_dim, z_pair_feat_dim, hidden_channels=64, num_heads=8, dropout_rate=0.1):
-        super(DualDeepSetClassifier, self).__init__()
-        # DeepSet for atom-level features (a_feats)
-        self.a_pooling = DeepSetTransformerPooling(
+class DualAttentionPoolingClassifier(torch.nn.Module):
+    def __init__(self, a_feat_dim, z_pair_feat_dim, hidden_channels=64, dropout_rate=0.1):
+        super(DualAttentionPoolingClassifier, self).__init__()
+        # Attention pooling for atom-level features (a_feats)
+        self.a_pooling = AttentionPooling(
             n_in=a_feat_dim,
-            n_hidden_channels=hidden_channels,
-            num_heads=num_heads
+            hidden_dim=hidden_channels,
         )
-        # DeepSet for pairwise features (z_pair_feats)
-        self.z_pair_pooling = DeepSetTransformerPooling(
+        # Attention pooling for pairwise features (z_pair_feats)
+        self.z_pair_pooling = AttentionPooling(
             n_in=z_pair_feat_dim,
-            n_hidden_channels=hidden_channels,
-            num_heads=num_heads
+            hidden_dim=hidden_channels,
         )
         # Dropout layers
         self.dropout1 = torch.nn.Dropout(dropout_rate)
         self.dropout2 = torch.nn.Dropout(dropout_rate)
-        # Final classification layer
-        self.classifier = torch.nn.Linear(2*hidden_channels, 1)
+        # Final classification layer - combine both pooled features
+        self.classifier = torch.nn.Linear(a_feat_dim + z_pair_feat_dim, 1)
 
     def forward(self, a_feats_list, z_pair_feats_list):
         batch_size = len(a_feats_list)
@@ -357,31 +355,31 @@ class DualDeepSetClassifier(torch.nn.Module):
             # Pool atom features
             a_feat = a_feats_list[i]
             # Remove extra dimensions if present
-            while a_feat.dim() > 3:
+            while a_feat.dim() > 2:
                 a_feat = a_feat.squeeze(0)
-            # Now a_feat should be [batch, N_atoms, feat_dim] or [N_atoms, feat_dim]
-            if a_feat.dim() == 2:
-                a_feat = a_feat.unsqueeze(0)  # Add batch dim -> [1, N_atoms, feat_dim]
+            # Now a_feat should be [N_atoms, feat_dim]
+            if a_feat.dim() == 1:
+                a_feat = a_feat.unsqueeze(0)  # Add atom dim -> [1, feat_dim]
             
             # Handle z_pair features
             z_pair = z_pair_feats_list[i]
             # Remove extra dimensions if present
-            while z_pair.dim() > 3:
+            while z_pair.dim() > 2:
                 z_pair = z_pair.squeeze(0)
-            # Now z_pair should be [batch, N*N, feat_dim] or [N*N, feat_dim]
-            if z_pair.dim() == 2:
-                z_pair = z_pair.unsqueeze(0)  # Add batch dim -> [1, N*N, feat_dim]
+            # Now z_pair should be [N*N, feat_dim]
+            if z_pair.dim() == 1:
+                z_pair = z_pair.unsqueeze(0)  # Add pair dim -> [1, feat_dim]
             
             # Get pooled features with dropout
-            a_score = self.dropout1(self.a_pooling(a_feat))  # [1, hidden_channels]
-            z_pair_score = self.dropout2(self.z_pair_pooling(z_pair))  # [1, hidden_channels]
+            a_pooled = self.dropout1(self.a_pooling(a_feat))  # [a_feat_dim]
+            z_pair_pooled = self.dropout2(self.z_pair_pooling(z_pair))  # [z_pair_feat_dim]
             
             # Combine scores
-            combined = torch.cat([a_score, z_pair_score], dim=-1)  # [1, 2*hidden_channels]
+            combined = torch.cat([a_pooled, z_pair_pooled], dim=-1)  # [a_feat_dim + z_pair_feat_dim]
             pooled_features.append(combined)
         
         # Stack all samples in the batch
-        pooled_features = torch.cat(pooled_features, dim=0)  # [batch_size, 2*hidden_channels]
+        pooled_features = torch.stack(pooled_features, dim=0)  # [batch_size, a_feat_dim + z_pair_feat_dim]
         
         # Final classification
         return self.classifier(pooled_features)
@@ -564,12 +562,12 @@ def main():
     # Now you can use train_loader and eval_loader in your training loop
     # Each batch will be (list_of_a_feats, list_of_z_pair_feats, labels)
 
-    # Create model
-    model = DualDeepSetClassifier(
+    # Create model - FIX: Use the correct class name
+    model = DualAttentionPoolingClassifier(
         a_feat_dim=a_feat_dim,
         z_pair_feat_dim=z_pair_feat_dim,
-        hidden_channels=args.hidden_channels,  # You can make this configurable via args
-        num_heads=args.num_heads         # You can make this configurable via args
+        hidden_channels=args.hidden_channels,
+        dropout_rate=0.1
     )
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)

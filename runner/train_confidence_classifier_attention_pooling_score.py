@@ -22,30 +22,136 @@ from sklearn.model_selection import train_test_split
 import wandb
 from sklearn.metrics import roc_auc_score, roc_curve, auc
 import matplotlib.pyplot as plt
-from protenix.model.modules.deepsettransformer import DeepSetTransformerPooling
+#from protenix.model.modules.attentionpooling import AttentionPooling
 import glob
 from pathlib import Path
 import math
+
+import torch.nn as nn
+import torch.nn.functional as F
+
+class AttentionPooling(nn.Module):
+    def __init__(self, n_in: int, hidden_dim: int = 128):
+        super().__init__()
+        self.attn_mlp = nn.Sequential(
+            nn.Linear(n_in, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, 1)
+        )
+
+    def forward(self, x):  # input: (L², n_in)
+
+        attn_scores = self.attn_mlp(x).squeeze(-1)  # (L²,)
+        attn_weights = F.softmax(attn_scores, dim=0)  # (L²,)
+        pooled = torch.sum(attn_weights.unsqueeze(1) * x, dim=0)  # (n_in,)
+        return pooled  # shape: (n_in,)
+
+def create_position_encoding(N_tokens, encoding_dim=64):
+    """
+    Create position encoding for token pairs.
+    
+    Args:
+        N_tokens (int): Number of tokens
+        encoding_dim (int): Dimension of position encoding
+        
+    Returns:
+        torch.Tensor: Position encoding of shape [N_tokens, N_tokens, encoding_dim]
+    """
+    # Create position indices for i and j tokens
+    pos_i = torch.arange(N_tokens, dtype=torch.float32).unsqueeze(1)  # [N_tokens, 1]
+    pos_j = torch.arange(N_tokens, dtype=torch.float32).unsqueeze(0)  # [1, N_tokens]
+    
+    # Create relative position encoding
+    rel_pos = pos_i - pos_j  # [N_tokens, N_tokens]
+    
+    # Create sinusoidal encoding
+    encoding = torch.zeros(N_tokens, N_tokens, encoding_dim)
+    for k in range(encoding_dim):
+        if k % 2 == 0:
+            encoding[:, :, k] = torch.sin(rel_pos / (10000 ** (k / encoding_dim)))
+        else:
+            encoding[:, :, k] = torch.cos(rel_pos / (10000 ** ((k-1) / encoding_dim)))
+    
+    return encoding
+
+
+class PositionEncodedTokenPairFeatures:
+    """
+    Class to handle position encoding for token pair features.
+    """
+    def __init__(self, encoding_dim=64):
+        self.encoding_dim = encoding_dim
+        self.position_encodings = {}
+    
+    def get_position_encoding(self, N_tokens, device):
+        """
+        Get or create position encoding for given number of tokens.
+        
+        Args:
+            N_tokens (int): Number of tokens
+            device (torch.device): Device to place encoding on
+            
+        Returns:
+            torch.Tensor: Position encoding of shape [N_tokens, N_tokens, encoding_dim]
+        """
+        if N_tokens not in self.position_encodings:
+            pos_enc = create_position_encoding(N_tokens, self.encoding_dim)
+            self.position_encodings[N_tokens] = pos_enc.to(device)
+        
+        return self.position_encodings[N_tokens]
+    
+    def encode_token_pair_features(self, features, device):
+        """
+        Add position encoding to token pair features.
+        
+        Args:
+            features (torch.Tensor): Token pair features of shape [N_tokens, N_tokens]
+            device (torch.device): Device to place encoding on
+            
+        Returns:
+            torch.Tensor: Features with position encoding of shape [N_tokens*N_tokens, 1+encoding_dim]
+        """
+        N_tokens = features.shape[0]
+        
+        # Get position encoding
+        pos_enc = self.get_position_encoding(N_tokens, device)
+        
+        # Flatten features and add position encoding
+        features_flat = features.flatten().unsqueeze(-1)  # [N_tokens*N_tokens, 1]
+        pos_enc_flat = pos_enc.reshape(-1, self.encoding_dim)  # [N_tokens*N_tokens, encoding_dim]
+        
+        # Concatenate features with position encoding
+        encoded_features = torch.cat([features_flat, pos_enc_flat], dim=-1)  # [N_tokens*N_tokens, 1+encoding_dim]
+        
+        return encoded_features
 
 
 def find_feature_files(data_dir):
     """Find all feature and label files in the data directory."""
     data_dir = Path(data_dir)
-    a_feats_files = sorted(data_dir.glob("**/a_feats*.pt"))
-    z_pair_feats_files = sorted(data_dir.glob("**/z_pair_feats*.pt"))
+    atom_plddt_files = sorted(data_dir.glob("**/atom_plddt*.pt"))
+    contact_probs_files = sorted(data_dir.glob("**/contact_probs*.pt"))
+    token_pair_pae_files = sorted(data_dir.glob("**/token_pair_pae*.pt"))
+    token_pair_pde_files = sorted(data_dir.glob("**/token_pair_pde*.pt"))
     label_files = sorted(data_dir.glob("**/labels*.pt"))
     
-    print(f"Found {len(a_feats_files)} a_feats files:")
-    for f in a_feats_files:
+    print(f"Found {len(atom_plddt_files)} atom_plddt files:")
+    for f in atom_plddt_files:
         print(f"  {f}")
-    print(f"\nFound {len(z_pair_feats_files)} z_pair_feats files:")
-    for f in z_pair_feats_files:
+    print(f"\nFound {len(contact_probs_files)} contact_probs files:")
+    for f in contact_probs_files:
+        print(f"  {f}")
+    print(f"\nFound {len(token_pair_pae_files)} token_pair_pae files:")
+    for f in token_pair_pae_files:
+        print(f"  {f}")
+    print(f"\nFound {len(token_pair_pde_files)} token_pair_pde files:")
+    for f in token_pair_pde_files:
         print(f"  {f}")
     print(f"\nFound {len(label_files)} label files:")
     for f in label_files:
         print(f"  {f}")
     
-    return [str(f) for f in a_feats_files], [str(f) for f in z_pair_feats_files], [str(f) for f in label_files]
+    return [str(f) for f in atom_plddt_files], [str(f) for f in contact_probs_files], [str(f) for f in token_pair_pae_files], [str(f) for f in token_pair_pde_files], [str(f) for f in label_files]
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train Confidence Classifier")
@@ -60,6 +166,7 @@ def parse_args():
     parser.add_argument('--patience', type=int, default=5, help='Early stopping patience (epochs)')
     parser.add_argument('--pretrained_model', type=str, default=None, help='Path to a pre-trained model to skip training and only run evaluation/plotting')
     parser.add_argument('--load_all_in_memory', action='store_true', help='Load all data into memory at once (faster but uses more memory)')
+    parser.add_argument('--pos_encoding_dim', type=int, default=64, help='Dimension of position encoding for token pair features')
     return parser.parse_args()
 
 class SequentialFileBatchSampler:
@@ -91,7 +198,7 @@ class SequentialFileBatchSampler:
         return sum(math.ceil(size / self.batch_size) for size in self.file_sizes)
 
 class InMemoryDataset(Dataset):
-    def __init__(self, a_feats_files, z_pair_feats_files, label_files, sample_indices, device='cuda', shared_data=None):
+    def __init__(self, atom_plddt_files, contact_probs_files, token_pair_pae_files, token_pair_pde_files, label_files, sample_indices, device='cuda', shared_data=None):
         """
         Dataset that loads all data into memory at once.
         sample_indices: list of (file_idx, sample_idx) tuples
@@ -102,8 +209,10 @@ class InMemoryDataset(Dataset):
         
         if shared_data is not None:
             # Use shared data from another instance
-            self.all_a_feats = shared_data['a_feats']
-            self.all_z_pair_feats = shared_data['z_pair_feats']
+            self.all_atom_plddt = shared_data['atom_plddt']
+            self.all_contact_probs = shared_data['contact_probs']
+            self.all_token_pair_pae = shared_data['token_pair_pae']
+            self.all_token_pair_pde = shared_data['token_pair_pde']
             self.all_labels = shared_data['labels']
             self.index_mapping = shared_data['index_mapping']
             print(f"Using shared data with {len(self.sample_indices)} samples")
@@ -111,39 +220,49 @@ class InMemoryDataset(Dataset):
             # Load all files into memory
             print("Loading all data into memory...")
             
-            self.all_a_feats = []
-            self.all_z_pair_feats = []
+            self.all_atom_plddt = []
+            self.all_contact_probs = []
+            self.all_token_pair_pae = []
+            self.all_token_pair_pde = []
             self.all_labels = []
             
             # Calculate cumulative sizes for mapping
             cumulative_sizes = [0]
-            for file_idx, a_file in enumerate(a_feats_files):
-                print(f"Loading file {file_idx + 1}/{len(a_feats_files)}")
-                a_data = torch.load(a_file, map_location='cpu')
-                z_data = torch.load(z_pair_feats_files[file_idx], map_location='cpu')
+            for file_idx, atom_plddt_file in enumerate(atom_plddt_files):
+                print(f"Loading file {file_idx + 1}/{len(atom_plddt_files)}")
+                atom_plddt_data = torch.load(atom_plddt_file, map_location='cpu')
+                contact_probs_data = torch.load(contact_probs_files[file_idx], map_location='cpu')
+                token_pair_pae_data = torch.load(token_pair_pae_files[file_idx], map_location='cpu')
+                token_pair_pde_data = torch.load(token_pair_pde_files[file_idx], map_location='cpu')
                 label_data = torch.load(label_files[file_idx], map_location='cpu')
                 
                 # Convert to list format if needed
-                if not isinstance(a_data, list):
-                    a_data = [a_data]
-                    z_data = [z_data]
+                if not isinstance(atom_plddt_data, list):
+                    atom_plddt_data = [atom_plddt_data]
+                    contact_probs_data = [contact_probs_data]
+                    token_pair_pae_data = [token_pair_pae_data]
+                    token_pair_pde_data = [token_pair_pde_data]
                     label_data = [label_data]
                 
                 # Store all samples from this file
-                self.all_a_feats.extend(a_data)
-                self.all_z_pair_feats.extend(z_data)
+                self.all_atom_plddt.extend(atom_plddt_data)
+                self.all_contact_probs.extend(contact_probs_data)
+                self.all_token_pair_pae.extend(token_pair_pae_data)
+                self.all_token_pair_pde.extend(token_pair_pde_data)
                 self.all_labels.extend(label_data)
                 
                 # Update cumulative sizes
-                cumulative_sizes.append(cumulative_sizes[-1] + len(a_data))
+                cumulative_sizes.append(cumulative_sizes[-1] + len(atom_plddt_data))
             
-            print(f"Loaded {len(self.all_a_feats)} total samples into memory")
+            print(f"Loaded {len(self.all_atom_plddt)} total samples into memory")
             
-            # Convert to tensors but keep on CPU (move to device during training)
-            print("Converting to tensors (keeping on CPU)...")
-            self.all_a_feats = [feat for feat in self.all_a_feats]  # Keep on CPU
-            self.all_z_pair_feats = [feat for feat in self.all_z_pair_feats]  # Keep on CPU
-            self.all_labels = torch.tensor(self.all_labels)  # Keep on CPU
+            # Convert to tensors and move to GPU directly
+            print("Converting to tensors and moving to GPU...")
+            self.all_atom_plddt = [feat.to(device) for feat in self.all_atom_plddt]  # Move to GPU
+            self.all_contact_probs = [feat.to(device) for feat in self.all_contact_probs]  # Move to GPU
+            self.all_token_pair_pae = [feat.to(device) for feat in self.all_token_pair_pae]  # Move to GPU
+            self.all_token_pair_pde = [feat.to(device) for feat in self.all_token_pair_pde]  # Move to GPU
+            self.all_labels = torch.tensor(self.all_labels, device=device)  # Move to GPU
             
             # Create mapping from sample_indices to global indices
             self.index_mapping = []
@@ -156,8 +275,10 @@ class InMemoryDataset(Dataset):
     def get_shared_data(self):
         """Return shared data for other instances"""
         return {
-            'a_feats': self.all_a_feats,
-            'z_pair_feats': self.all_z_pair_feats,
+            'atom_plddt': self.all_atom_plddt,
+            'contact_probs': self.all_contact_probs,
+            'token_pair_pae': self.all_token_pair_pae,
+            'token_pair_pde': self.all_token_pair_pde,
             'labels': self.all_labels,
             'index_mapping': self.index_mapping
         }
@@ -168,19 +289,23 @@ class InMemoryDataset(Dataset):
     def __getitem__(self, idx):
         global_idx = self.index_mapping[idx]
         return (
-            self.all_a_feats[global_idx].to(self.device),
-            self.all_z_pair_feats[global_idx].to(self.device),
-            self.all_labels[global_idx].to(self.device)
+            self.all_atom_plddt[global_idx],  # Already on GPU
+            self.all_contact_probs[global_idx],  # Already on GPU
+            self.all_token_pair_pae[global_idx],  # Already on GPU
+            self.all_token_pair_pde[global_idx],  # Already on GPU
+            self.all_labels[global_idx]  # Already on GPU
         )
 
 class SampleBasedDataset(Dataset):
-    def __init__(self, a_feats_files, z_pair_feats_files, label_files, sample_indices, device='cuda'):
+    def __init__(self, atom_plddt_files, contact_probs_files, token_pair_pae_files, token_pair_pde_files, label_files, sample_indices, device='cuda'):
         """
         Dataset that works with sample indices rather than file indices.
         sample_indices: list of (file_idx, sample_idx) tuples
         """
-        self.a_feats_files = a_feats_files
-        self.z_pair_feats_files = z_pair_feats_files
+        self.atom_plddt_files = atom_plddt_files
+        self.contact_probs_files = contact_probs_files
+        self.token_pair_pae_files = token_pair_pae_files
+        self.token_pair_pde_files = token_pair_pde_files
         self.label_files = label_files
         self.sample_indices = sample_indices
         self.device = device
@@ -197,20 +322,26 @@ class SampleBasedDataset(Dataset):
         # Check if file is cached
         if file_idx not in self.file_cache:
             # Load file if not cached
-            a_data = torch.load(self.a_feats_files[file_idx], map_location='cpu')
-            z_data = torch.load(self.z_pair_feats_files[file_idx], map_location='cpu')
+            atom_plddt_data = torch.load(self.atom_plddt_files[file_idx], map_location='cpu')
+            contact_probs_data = torch.load(self.contact_probs_files[file_idx], map_location='cpu')
+            token_pair_pae_data = torch.load(self.token_pair_pae_files[file_idx], map_location='cpu')
+            token_pair_pde_data = torch.load(self.token_pair_pde_files[file_idx], map_location='cpu')
             label_data = torch.load(self.label_files[file_idx], map_location='cpu')
             
             # Convert to list format if needed
-            if not isinstance(a_data, list):
-                a_data = [a_data]
-                z_data = [z_data]
+            if not isinstance(atom_plddt_data, list):
+                atom_plddt_data = [atom_plddt_data]
+                contact_probs_data = [contact_probs_data]
+                token_pair_pae_data = [token_pair_pae_data]
+                token_pair_pde_data = [token_pair_pde_data]
                 label_data = [label_data]
             
             # Cache the file
             self.file_cache[file_idx] = {
-                'a_feats': a_data,
-                'z_pair_feats': z_data,
+                'atom_plddt': atom_plddt_data,
+                'contact_probs': contact_probs_data,
+                'token_pair_pae': token_pair_pae_data,
+                'token_pair_pde': token_pair_pde_data,
                 'labels': label_data
             }
             
@@ -227,8 +358,10 @@ class SampleBasedDataset(Dataset):
         
         # Get the specific sample
         return (
-            self.file_cache[file_idx]['a_feats'][sample_idx].to(self.device),
-            self.file_cache[file_idx]['z_pair_feats'][sample_idx].to(self.device),
+            self.file_cache[file_idx]['atom_plddt'][sample_idx].to(self.device),
+            self.file_cache[file_idx]['contact_probs'][sample_idx].to(self.device),
+            self.file_cache[file_idx]['token_pair_pae'][sample_idx].to(self.device),
+            self.file_cache[file_idx]['token_pair_pde'][sample_idx].to(self.device),
             torch.tensor(self.file_cache[file_idx]['labels'][sample_idx], device=self.device)
         )
     
@@ -236,152 +369,107 @@ class SampleBasedDataset(Dataset):
         file_idx, sample_idx = self.sample_indices[idx]
         return self.load_sample_from_file(file_idx, sample_idx)
 
-class FileChunkedDataset(Dataset):
-    def __init__(self, a_feats_files, z_pair_feats_files, label_files, device='cuda'):
-        self.a_feats_files = a_feats_files
-        self.z_pair_feats_files = z_pair_feats_files
-        self.label_files = label_files
-        self.device = device
-        
-        # Just store file paths, don't load anything yet
-        self.file_sizes = []
-        self.total_size = 0
-        print("\nCalculating dataset size...")
-        for i, a_file in enumerate(a_feats_files, 1):
-            print(f"Checking file {i}/{len(a_feats_files)}")
-            # Quick check without loading full data
-            sample_data = torch.load(a_file, map_location='cpu')
-            if isinstance(sample_data, list):
-                size = len(sample_data)
-            else:
-                size = sample_data.size(0) if sample_data.dim() == 3 else 1
-            self.file_sizes.append(size)
-            self.total_size += size
-            del sample_data
-        
-        # Cache for loaded files (optional)
-        self.file_cache = {}
-        self.max_cache_size = 2  # Keep only 2 files in memory at once
-    
-    def __len__(self):
-        return self.total_size
-    
-    def load_sample_from_file(self, file_idx, sample_idx):
-        """Load a single sample from a specific file"""
-        # Check if file is cached
-        if file_idx not in self.file_cache:
-            # Load file if not cached
-            a_data = torch.load(self.a_feats_files[file_idx], map_location='cpu')
-            z_data = torch.load(self.z_pair_feats_files[file_idx], map_location='cpu')
-            label_data = torch.load(self.label_files[file_idx], map_location='cpu')
-            
-            # Convert to list format if needed
-            if not isinstance(a_data, list):
-                a_data = [a_data]
-                z_data = [z_data]
-                label_data = [label_data]
-            
-            # Cache the file
-            self.file_cache[file_idx] = {
-                'a_feats': a_data,
-                'z_pair_feats': z_data,
-                'labels': label_data
-            }
-            
-            # Remove oldest cache entry if cache is full (but not the current file!)
-            if len(self.file_cache) > self.max_cache_size:
-                # Find the oldest key that's not the current file
-                oldest_key = None
-                for key in self.file_cache.keys():
-                    if key != file_idx:
-                        if oldest_key is None or key < oldest_key:
-                            oldest_key = key
-                if oldest_key is not None:
-                    del self.file_cache[oldest_key]
-        
-        # Get the specific sample
-        return (
-            self.file_cache[file_idx]['a_feats'][sample_idx].to(self.device),
-            self.file_cache[file_idx]['z_pair_feats'][sample_idx].to(self.device),
-            torch.tensor(self.file_cache[file_idx]['labels'][sample_idx], device=self.device)
-        )
-    
-    def __getitem__(self, idx):
-        # Find which file and position this index corresponds to
-        file_idx = 0
-        pos = idx
-        while pos >= self.file_sizes[file_idx]:
-            pos -= self.file_sizes[file_idx]
-            file_idx += 1
-        
-        # Debug: Print the mapping
-        #print(f"Index {idx} -> File {file_idx}, Position {pos}")
-        #print(f"File sizes: {self.file_sizes}")
-        
-        # Load only the specific sample needed
-        return self.load_sample_from_file(file_idx, pos)
 
 def confidence_collate_fn(batch):
-    a_feats, z_pair_feats, labels = zip(*batch)
+    atom_plddt, contact_probs, token_pair_pae, token_pair_pde, labels = zip(*batch)
     labels = torch.tensor(labels)
-    return list(a_feats), list(z_pair_feats), labels
+    return list(atom_plddt), list(contact_probs), list(token_pair_pae), list(token_pair_pde), labels
 
-class DualDeepSetClassifier(torch.nn.Module):
-    def __init__(self, a_feat_dim, z_pair_feat_dim, hidden_channels=64, num_heads=8, dropout_rate=0.1):
-        super(DualDeepSetClassifier, self).__init__()
-        # DeepSet for atom-level features (a_feats)
-        self.a_pooling = DeepSetTransformerPooling(
-            n_in=a_feat_dim,
-            n_hidden_channels=hidden_channels,
-            num_heads=num_heads
+class FourFeatureAttentionPoolingClassifier(torch.nn.Module):
+    def __init__(self, atom_plddt_dim=1, contact_probs_dim=1, token_pair_pae_dim=1, token_pair_pde_dim=1, hidden_channels=64, dropout_rate=0.1, pos_encoding_dim=64):
+        super(FourFeatureAttentionPoolingClassifier, self).__init__()
+        # Position encoding for token pair features
+        self.pos_encoder = PositionEncodedTokenPairFeatures(encoding_dim=pos_encoding_dim)
+        
+        # Attention pooling for atom pLDDT features
+        self.atom_plddt_pooling = AttentionPooling(
+            n_in=1,
+            hidden_dim=hidden_channels,
         )
-        # DeepSet for pairwise features (z_pair_feats)
-        self.z_pair_pooling = DeepSetTransformerPooling(
-            n_in=z_pair_feat_dim,
-            n_hidden_channels=hidden_channels,
-            num_heads=num_heads
+        # Attention pooling for contact probabilities (with position encoding)
+        self.contact_probs_pooling = AttentionPooling(
+            n_in=1 + pos_encoding_dim,  # Original feature + position encoding
+            hidden_dim=hidden_channels,
         )
-        # Dropout layers
-        self.dropout1 = torch.nn.Dropout(dropout_rate)
-        self.dropout2 = torch.nn.Dropout(dropout_rate)
-        # Final classification layer
-        self.classifier = torch.nn.Linear(2*hidden_channels, 1)
+        # Attention pooling for token pair PAE features (with position encoding)
+        self.token_pair_pae_pooling = AttentionPooling(
+            n_in=1 + pos_encoding_dim,  # Original feature + position encoding
+            hidden_dim=hidden_channels,
+        )
+        # Attention pooling for token pair PDE features (with position encoding)
+        self.token_pair_pde_pooling = AttentionPooling(
+            n_in=1 + pos_encoding_dim,  # Original feature + position encoding
+            hidden_dim=hidden_channels,
+        )
+        # No dropout layers
+        # Final classification layer - combine all four pooled features
+        total_dim = 3 * pos_encoding_dim + 4
+        self.classifier = torch.nn.Linear(total_dim, 1)
 
-    def forward(self, a_feats_list, z_pair_feats_list):
-        batch_size = len(a_feats_list)
+    def forward(self, atom_plddt_list, contact_probs_list, token_pair_pae_list, token_pair_pde_list):
+        batch_size = len(atom_plddt_list)
         device = next(self.parameters()).device
         
         # Process each sample in the batch
         pooled_features = []
         for i in range(batch_size):
-            # Pool atom features
-            a_feat = a_feats_list[i]
+            # Process atom pLDDT features
+            atom_plddt = atom_plddt_list[i]
             # Remove extra dimensions if present
-            while a_feat.dim() > 3:
-                a_feat = a_feat.squeeze(0)
-            # Now a_feat should be [batch, N_atoms, feat_dim] or [N_atoms, feat_dim]
-            if a_feat.dim() == 2:
-                a_feat = a_feat.unsqueeze(0)  # Add batch dim -> [1, N_atoms, feat_dim]
+            while atom_plddt.dim() > 2:
+                atom_plddt = atom_plddt.squeeze(0)
+            # Now atom_plddt should be [N_atoms, 1]
+            if atom_plddt.dim() == 1:
+                atom_plddt = atom_plddt.unsqueeze(-1)  # Add feature dim -> [N_atoms, 1]
             
-            # Handle z_pair features
-            z_pair = z_pair_feats_list[i]
+            # Process contact probabilities with position encoding
+            contact_probs = contact_probs_list[i]
             # Remove extra dimensions if present
-            while z_pair.dim() > 3:
-                z_pair = z_pair.squeeze(0)
-            # Now z_pair should be [batch, N*N, feat_dim] or [N*N, feat_dim]
-            if z_pair.dim() == 2:
-                z_pair = z_pair.unsqueeze(0)  # Add batch dim -> [1, N*N, feat_dim]
+            while contact_probs.dim() > 2:
+                contact_probs = contact_probs.squeeze(0)
+            # Now contact_probs should be [N_tokens, N_tokens]
+            if contact_probs.dim() == 2:
+                # Add position encoding and flatten
+                contact_probs = self.pos_encoder.encode_token_pair_features(contact_probs, device)
+            elif contact_probs.dim() == 1:
+                contact_probs = contact_probs.unsqueeze(-1)  # Add feature dim -> [N_tokens, 1]
             
-            # Get pooled features with dropout
-            a_score = self.dropout1(self.a_pooling(a_feat))  # [1, hidden_channels]
-            z_pair_score = self.dropout2(self.z_pair_pooling(z_pair))  # [1, hidden_channels]
+            # Process token pair PAE features with position encoding
+            token_pair_pae = token_pair_pae_list[i]
+            # Remove extra dimensions if present
+            while token_pair_pae.dim() > 2:
+                token_pair_pae = token_pair_pae.squeeze(0)
+            # Now token_pair_pae should be [N_tokens, N_tokens]
+            if token_pair_pae.dim() == 2:
+                # Add position encoding and flatten
+                token_pair_pae = self.pos_encoder.encode_token_pair_features(token_pair_pae, device)
+            elif token_pair_pae.dim() == 1:
+                token_pair_pae = token_pair_pae.unsqueeze(-1)  # Add feature dim -> [N_tokens, 1]
             
-            # Combine scores
-            combined = torch.cat([a_score, z_pair_score], dim=-1)  # [1, 2*hidden_channels]
+            # Process token pair PDE features with position encoding
+            token_pair_pde = token_pair_pde_list[i]
+            # Remove extra dimensions if present
+            while token_pair_pde.dim() > 2:
+                token_pair_pde = token_pair_pde.squeeze(0)
+            # Now token_pair_pde should be [N_tokens, N_tokens]
+            if token_pair_pde.dim() == 2:
+                # Add position encoding and flatten
+                token_pair_pde = self.pos_encoder.encode_token_pair_features(token_pair_pde, device)
+            elif token_pair_pde.dim() == 1:
+                token_pair_pde = token_pair_pde.unsqueeze(-1)  # Add feature dim -> [N_tokens, 1]
+            
+            # Get pooled features without dropout
+            atom_plddt_pooled = self.atom_plddt_pooling(atom_plddt)  # [atom_plddt_dim]
+            contact_probs_pooled = self.contact_probs_pooling(contact_probs)  # [contact_probs_dim]
+            token_pair_pae_pooled = self.token_pair_pae_pooling(token_pair_pae)  # [token_pair_pae_dim]
+            token_pair_pde_pooled = self.token_pair_pde_pooling(token_pair_pde)  # [token_pair_pde_dim]
+            
+            # Combine all features
+            combined = torch.cat([atom_plddt_pooled, contact_probs_pooled, token_pair_pae_pooled, token_pair_pde_pooled], dim=-1)
             pooled_features.append(combined)
         
         # Stack all samples in the batch
-        pooled_features = torch.cat(pooled_features, dim=0)  # [batch_size, 2*hidden_channels]
+        pooled_features = torch.stack(pooled_features, dim=0)  # [batch_size, total_dim]
         
         # Final classification
         return self.classifier(pooled_features)
@@ -403,31 +491,17 @@ def main():
             "patience": args.patience,
             "output": args.output,
             "pretrained_model": args.pretrained_model,
+            "pos_encoding_dim": args.pos_encoding_dim,
         },
         tags=["protein", "confidence", "deepset"],
         notes="Training confidence classifier for protein binding prediction"
     )
 
     # Find all feature and label files
-    a_feats_paths, z_pair_feats_paths, label_paths = find_feature_files(args.data_dir)
+    atom_plddt_paths, contact_probs_paths, token_pair_pae_paths, token_pair_pde_paths, label_paths = find_feature_files(args.data_dir)
     
-    if not (a_feats_paths and z_pair_feats_paths and label_paths):
+    if not (atom_plddt_paths and contact_probs_paths and token_pair_pae_paths and token_pair_pde_paths and label_paths):
         raise ValueError(f"Could not find required files in {args.data_dir}")
-
-    # Get feature dimensions from first samples
-    a_sample = torch.load(a_feats_paths[0], map_location='cpu')
-    if isinstance(a_sample, list):
-        a_feat_dim = a_sample[0].shape[-1]
-    else:
-        a_feat_dim = a_sample.shape[-1]
-    del a_sample
-
-    z_sample = torch.load(z_pair_feats_paths[0], map_location='cpu')
-    if isinstance(z_sample, list):
-        z_pair_feat_dim = z_sample[0].shape[-1]
-    else:
-        z_pair_feat_dim = z_sample.shape[-1]
-    del z_sample
 
     # Create sample-based split instead of file-based split
     print("\nCreating sample-based train/eval/test split...")
@@ -437,10 +511,10 @@ def main():
     sample_indices = []  # List of (file_idx, sample_idx) tuples
     
     print("Calculating total samples across all files...")
-    for file_idx, a_file in enumerate(a_feats_paths):
-        print(f"Checking file {file_idx + 1}/{len(a_feats_paths)}")
+    for file_idx, atom_plddt_file in enumerate(atom_plddt_paths):
+        print(f"Checking file {file_idx + 1}/{len(atom_plddt_paths)}")
         # Quick check without loading full data
-        sample_data = torch.load(a_file, map_location='cpu')
+        sample_data = torch.load(atom_plddt_file, map_location='cpu')
         if isinstance(sample_data, list):
             file_size = len(sample_data)
         else:
@@ -478,8 +552,10 @@ def main():
         
         # Create train dataset first (this will load all data)
         train_dataset = DatasetClass(
-            a_feats_paths,
-            z_pair_feats_paths,
+            atom_plddt_paths,
+            contact_probs_paths,
+            token_pair_pae_paths,
+            token_pair_pde_paths,
             label_paths,
             train_indices,
             device=device
@@ -490,8 +566,10 @@ def main():
         
         # Create eval and test datasets using shared data
         eval_dataset = DatasetClass(
-            a_feats_paths,
-            z_pair_feats_paths,
+            atom_plddt_paths,
+            contact_probs_paths,
+            token_pair_pae_paths,
+            token_pair_pde_paths,
             label_paths,
             eval_indices,
             device=device,
@@ -499,8 +577,10 @@ def main():
         )
         
         test_dataset = DatasetClass(
-            a_feats_paths,
-            z_pair_feats_paths,
+            atom_plddt_paths,
+            contact_probs_paths,
+            token_pair_pae_paths,
+            token_pair_pde_paths,
             label_paths,
             test_indices,
             device=device,
@@ -511,24 +591,30 @@ def main():
         DatasetClass = SampleBasedDataset
         
         train_dataset = DatasetClass(
-            a_feats_paths,
-            z_pair_feats_paths,
+            atom_plddt_paths,
+            contact_probs_paths,
+            token_pair_pae_paths,
+            token_pair_pde_paths,
             label_paths,
             train_indices,
             device=device
         )
         
         eval_dataset = DatasetClass(
-            a_feats_paths,
-            z_pair_feats_paths,
+            atom_plddt_paths,
+            contact_probs_paths,
+            token_pair_pae_paths,
+            token_pair_pde_paths,
             label_paths,
             eval_indices,
             device=device
         )
         
         test_dataset = DatasetClass(
-            a_feats_paths,
-            z_pair_feats_paths,
+            atom_plddt_paths,
+            contact_probs_paths,
+            token_pair_pae_paths,
+            token_pair_pde_paths,
             label_paths,
             test_indices,
             device=device
@@ -564,12 +650,14 @@ def main():
     # Now you can use train_loader and eval_loader in your training loop
     # Each batch will be (list_of_a_feats, list_of_z_pair_feats, labels)
 
-    # Create model
-    model = DualDeepSetClassifier(
-        a_feat_dim=a_feat_dim,
-        z_pair_feat_dim=z_pair_feat_dim,
-        hidden_channels=args.hidden_channels,  # You can make this configurable via args
-        num_heads=args.num_heads         # You can make this configurable via args
+    # Create model - FIX: Use the correct class name
+    model = FourFeatureAttentionPoolingClassifier(
+        atom_plddt_dim=1,
+        contact_probs_dim=1,
+        token_pair_pae_dim=1,
+        token_pair_pde_dim=1,
+        hidden_channels=args.hidden_channels,
+        pos_encoding_dim=args.pos_encoding_dim,  # Position encoding dimension for token pair features
     )
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
@@ -578,9 +666,9 @@ def main():
     criterion = torch.nn.BCEWithLogitsLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
     # Add learning rate scheduler
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.8, patience=15, verbose=True
-    )
+    # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    #     optimizer, mode='min', factor=0.8, patience=15, verbose=True
+    # )
 
     # Load pretrained model if provided
     if args.pretrained_model is not None:
@@ -596,18 +684,19 @@ def main():
         total_loss = 0
         train_correct = 0
         train_total = 0
-        for a_feats_batch, z_pair_feats_batch, yb in train_loader:
-            # Move each tensor in the lists to device
-            a_feats_batch = [a.to(device, dtype=torch.float32) for a in a_feats_batch]
-            z_pair_feats_batch = [z.to(device, dtype=torch.float32) for z in z_pair_feats_batch]
-            yb = yb.to(device)
+        for atom_plddt_batch, contact_probs_batch, token_pair_pae_batch, token_pair_pde_batch, yb in train_loader:
+            # Data is already on GPU, just ensure correct dtype
+            atom_plddt_batch = [a.to(dtype=torch.float32) for a in atom_plddt_batch]
+            contact_probs_batch = [c.to(dtype=torch.float32) for c in contact_probs_batch]
+            token_pair_pae_batch = [p.to(dtype=torch.float32) for p in token_pair_pae_batch]
+            token_pair_pde_batch = [d.to(dtype=torch.float32) for d in token_pair_pde_batch]
+            yb = yb.to(device=device, dtype=torch.float32)
             
             optimizer.zero_grad()
-            out = model(a_feats_batch, z_pair_feats_batch)
+            out = model(atom_plddt_batch, contact_probs_batch, token_pair_pae_batch, token_pair_pde_batch)
             # Ensure consistent shapes
             out = out.view(-1)  # Flatten to [batch_size]
             yb = yb.float().view(-1)  # Flatten to [batch_size]
-            
             loss = criterion(out, yb)
             loss.backward()
             # Add gradient clipping
@@ -634,7 +723,7 @@ def main():
             "train_loss": avg_loss,
             "train_acc": train_acc,
             "epoch": epoch + 1
-        })
+        }, step=epoch+1)
 
         # Eval
         model.eval()
@@ -643,13 +732,15 @@ def main():
         all_labels = []
         all_probs = []
         with torch.no_grad():
-            for a_feats_batch, z_pair_feats_batch, yb in eval_loader:
-                # Move each tensor in the lists to device
-                a_feats_batch = [a.to(device, dtype=torch.float32) for a in a_feats_batch]
-                z_pair_feats_batch = [z.to(device, dtype=torch.float32) for z in z_pair_feats_batch]
-                yb = yb.to(device)
+            for atom_plddt_batch, contact_probs_batch, token_pair_pae_batch, token_pair_pde_batch, yb in eval_loader:
+                # Data is already on GPU, just ensure correct dtype
+                atom_plddt_batch = [a.to(dtype=torch.float32) for a in atom_plddt_batch]
+                contact_probs_batch = [c.to(dtype=torch.float32) for c in contact_probs_batch]
+                token_pair_pae_batch = [p.to(dtype=torch.float32) for p in token_pair_pae_batch]
+                token_pair_pde_batch = [d.to(dtype=torch.float32) for d in token_pair_pde_batch]
+                yb = yb.to(device=device, dtype=torch.float32)
                 
-                out = model(a_feats_batch, z_pair_feats_batch)
+                out = model(atom_plddt_batch, contact_probs_batch, token_pair_pae_batch, token_pair_pde_batch)
                 # Ensure consistent shapes
                 out = out.view(-1)  # Flatten to [batch_size]
                 yb = yb.float().view(-1)  # Flatten to [batch_size]
@@ -675,18 +766,18 @@ def main():
             "eval_loss": avg_eval_loss,
             "eval_acc": acc,
             "epoch": epoch + 1
-        })
+        }, step=epoch+1)
 
         # Compute and log AUC
         try:
             area_under_curve = roc_auc_score(all_labels, all_probs)
             if (epoch + 1) % 100 == 0 or (epoch + 1) == args.epochs:
                 print(f"Epoch {epoch+1}/{args.epochs} - Eval AUC: {area_under_curve:.4f}")
-            wandb.log({"eval_auc": area_under_curve, "epoch": epoch + 1})
+            wandb.log({"eval_auc": area_under_curve, "epoch": epoch + 1}, step=epoch+1)
         except Exception as e:
             if (epoch + 1) % 100 == 0 or (epoch + 1) == args.epochs:
                 print(f"AUC calculation failed: {e}")
-            wandb.log({"eval_auc": None, "epoch": epoch + 1})
+            wandb.log({"eval_auc": None, "epoch": epoch + 1}, step=epoch+1)
 
         # Early stopping and best model saving
         if acc > best_acc:
@@ -703,9 +794,9 @@ def main():
                 break
         
         # Update learning rate based on validation accuracy
-        scheduler.step(avg_eval_loss)
+        #scheduler.step(avg_eval_loss)
         current_lr = optimizer.param_groups[0]['lr']
-        wandb.log({"learning_rate": current_lr, "epoch": epoch + 1})
+        wandb.log({"learning_rate": current_lr, "epoch": epoch + 1}, step=epoch+1)
 
     print(f"Best model saved to {args.output} with acc {best_acc:.4f} at epoch {best_epoch}")
     # Load best model for evaluation/plotting
@@ -721,12 +812,14 @@ def main():
     test_all_probs = []
     
     with torch.no_grad():
-        for a_feats_batch, z_pair_feats_batch, yb in test_loader:
-            a_feats_batch = [a.to(device, dtype=torch.float32) for a in a_feats_batch]
-            z_pair_feats_batch = [z.to(device, dtype=torch.float32) for z in z_pair_feats_batch]
-            yb = yb.to(device)
+        for atom_plddt_batch, contact_probs_batch, token_pair_pae_batch, token_pair_pde_batch, yb in test_loader:
+            atom_plddt_batch = [a.to(dtype=torch.float32) for a in atom_plddt_batch]
+            contact_probs_batch = [c.to(dtype=torch.float32) for c in contact_probs_batch]
+            token_pair_pae_batch = [p.to(dtype=torch.float32) for p in token_pair_pae_batch]
+            token_pair_pde_batch = [d.to(dtype=torch.float32) for d in token_pair_pde_batch]
+            yb = yb.to(device = device, dtype=torch.float32)
             
-            out = model(a_feats_batch, z_pair_feats_batch)
+            out = model(atom_plddt_batch, contact_probs_batch, token_pair_pae_batch, token_pair_pde_batch)
             # Ensure consistent shapes
             out = out.view(-1)  # Flatten to [batch_size]
             yb = yb.float().view(-1)  # Flatten to [batch_size]
@@ -770,11 +863,13 @@ def main():
     all_labels = []
     all_probs = []
     with torch.no_grad():
-        for a_feats_batch, z_pair_feats_batch, yb in eval_loader:
-            a_feats_batch = [a.to(device, dtype=torch.float32) for a in a_feats_batch]
-            z_pair_feats_batch = [z.to(device, dtype=torch.float32) for z in z_pair_feats_batch]
-            yb = yb.to(device)
-            out = model(a_feats_batch, z_pair_feats_batch)
+        for atom_plddt_batch, contact_probs_batch, token_pair_pae_batch, token_pair_pde_batch, yb in eval_loader:
+            atom_plddt_batch = [a.to(dtype=torch.float32) for a in atom_plddt_batch]
+            contact_probs_batch = [c.to(dtype=torch.float32) for c in contact_probs_batch]
+            token_pair_pae_batch = [p.to(dtype=torch.float32) for p in token_pair_pae_batch]
+            token_pair_pde_batch = [d.to(dtype=torch.float32) for d in token_pair_pde_batch]
+            yb = yb.to(device=device, dtype=torch.float32)
+            out = model(atom_plddt_batch, contact_probs_batch, token_pair_pae_batch, token_pair_pde_batch)
             if out.shape[-1] == 1:
                 probs = torch.sigmoid(out.squeeze())
                 if probs.ndim == 0:

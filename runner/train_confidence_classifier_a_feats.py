@@ -327,31 +327,27 @@ def confidence_collate_fn(batch):
     return list(a_feats), list(z_pair_feats), labels
 
 class DualDeepSetClassifier(torch.nn.Module):
-    def __init__(self, a_feat_dim, z_pair_feat_dim, hidden_channels=64, num_heads=8, dropout_rate=0.1):
+    def __init__(self, a_feat_dim, hidden_channels=64, num_heads=8, dropout_rate=0.1):
         super(DualDeepSetClassifier, self).__init__()
-        # DeepSet for atom-level features (a_feats)
+        
+        # DeepSet for atom-level features (a_feats) only
         self.a_pooling = DeepSetTransformerPooling(
             n_in=a_feat_dim,
             n_hidden_channels=hidden_channels,
             num_heads=num_heads
         )
-        # DeepSet for pairwise features (z_pair_feats)
-        self.z_pair_pooling = DeepSetTransformerPooling(
-            n_in=z_pair_feat_dim,
-            n_hidden_channels=hidden_channels,
-            num_heads=num_heads
-        )
-        # Dropout layers
-        self.dropout1 = torch.nn.Dropout(dropout_rate)
-        self.dropout2 = torch.nn.Dropout(dropout_rate)
-        # Final classification layer
-        self.classifier = torch.nn.Linear(2*hidden_channels, 1)
+        
+        # Dropout layer
+        self.dropout = torch.nn.Dropout(dropout_rate)
+        
+        # Final classification layer (only using atom features)
+        self.classifier = torch.nn.Linear(hidden_channels, 1)
 
-    def forward(self, a_feats_list, z_pair_feats_list):
+    def forward(self, a_feats_list, z_pair_feats_list=None):
         batch_size = len(a_feats_list)
         device = next(self.parameters()).device
         
-        # Process each sample in the batch
+        # Process each sample in the batch (only atom features)
         pooled_features = []
         for i in range(batch_size):
             # Pool atom features
@@ -363,25 +359,13 @@ class DualDeepSetClassifier(torch.nn.Module):
             if a_feat.dim() == 2:
                 a_feat = a_feat.unsqueeze(0)  # Add batch dim -> [1, N_atoms, feat_dim]
             
-            # Handle z_pair features
-            z_pair = z_pair_feats_list[i]
-            # Remove extra dimensions if present
-            while z_pair.dim() > 3:
-                z_pair = z_pair.squeeze(0)
-            # Now z_pair should be [batch, N*N, feat_dim] or [N*N, feat_dim]
-            if z_pair.dim() == 2:
-                z_pair = z_pair.unsqueeze(0)  # Add batch dim -> [1, N*N, feat_dim]
+            # Get pooled features with dropout (only atom features)
+            a_score = self.dropout(self.a_pooling(a_feat))  # [1, hidden_channels]
             
-            # Get pooled features with dropout
-            a_score = self.dropout1(self.a_pooling(a_feat))  # [1, hidden_channels]
-            z_pair_score = self.dropout2(self.z_pair_pooling(z_pair))  # [1, hidden_channels]
-            
-            # Combine scores
-            combined = torch.cat([a_score, z_pair_score], dim=-1)  # [1, 2*hidden_channels]
-            pooled_features.append(combined)
+            pooled_features.append(a_score)
         
         # Stack all samples in the batch
-        pooled_features = torch.cat(pooled_features, dim=0)  # [batch_size, 2*hidden_channels]
+        pooled_features = torch.cat(pooled_features, dim=0)  # [batch_size, hidden_channels]
         
         # Final classification
         return self.classifier(pooled_features)
@@ -567,7 +551,6 @@ def main():
     # Create model
     model = DualDeepSetClassifier(
         a_feat_dim=a_feat_dim,
-        z_pair_feat_dim=z_pair_feat_dim,
         hidden_channels=args.hidden_channels,  # You can make this configurable via args
         num_heads=args.num_heads         # You can make this configurable via args
     )
@@ -597,13 +580,12 @@ def main():
         train_correct = 0
         train_total = 0
         for a_feats_batch, z_pair_feats_batch, yb in train_loader:
-            # Move each tensor in the lists to device
+            # Move atom features to device (ignore pairwise features)
             a_feats_batch = [a.to(device, dtype=torch.float32) for a in a_feats_batch]
-            z_pair_feats_batch = [z.to(device, dtype=torch.float32) for z in z_pair_feats_batch]
             yb = yb.to(device)
             
             optimizer.zero_grad()
-            out = model(a_feats_batch, z_pair_feats_batch)
+            out = model(a_feats_batch)  # Only pass atom features
             # Ensure consistent shapes
             out = out.view(-1)  # Flatten to [batch_size]
             yb = yb.float().view(-1)  # Flatten to [batch_size]
@@ -644,12 +626,11 @@ def main():
         all_probs = []
         with torch.no_grad():
             for a_feats_batch, z_pair_feats_batch, yb in eval_loader:
-                # Move each tensor in the lists to device
+                # Move atom features to device (ignore pairwise features)
                 a_feats_batch = [a.to(device, dtype=torch.float32) for a in a_feats_batch]
-                z_pair_feats_batch = [z.to(device, dtype=torch.float32) for z in z_pair_feats_batch]
                 yb = yb.to(device)
                 
-                out = model(a_feats_batch, z_pair_feats_batch)
+                out = model(a_feats_batch)  # Only pass atom features
                 # Ensure consistent shapes
                 out = out.view(-1)  # Flatten to [batch_size]
                 yb = yb.float().view(-1)  # Flatten to [batch_size]
@@ -723,10 +704,9 @@ def main():
     with torch.no_grad():
         for a_feats_batch, z_pair_feats_batch, yb in test_loader:
             a_feats_batch = [a.to(device, dtype=torch.float32) for a in a_feats_batch]
-            z_pair_feats_batch = [z.to(device, dtype=torch.float32) for z in z_pair_feats_batch]
             yb = yb.to(device)
             
-            out = model(a_feats_batch, z_pair_feats_batch)
+            out = model(a_feats_batch)  # Only pass atom features
             # Ensure consistent shapes
             out = out.view(-1)  # Flatten to [batch_size]
             yb = yb.float().view(-1)  # Flatten to [batch_size]
@@ -772,9 +752,8 @@ def main():
     with torch.no_grad():
         for a_feats_batch, z_pair_feats_batch, yb in eval_loader:
             a_feats_batch = [a.to(device, dtype=torch.float32) for a in a_feats_batch]
-            z_pair_feats_batch = [z.to(device, dtype=torch.float32) for z in z_pair_feats_batch]
             yb = yb.to(device)
-            out = model(a_feats_batch, z_pair_feats_batch)
+            out = model(a_feats_batch)  # Only pass atom features
             if out.shape[-1] == 1:
                 probs = torch.sigmoid(out.squeeze())
                 if probs.ndim == 0:

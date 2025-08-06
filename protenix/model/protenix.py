@@ -408,9 +408,9 @@ class Protenix(nn.Module):
             if self.configs.train_classifier_by_inference:
                 all_pred_dict['classifier_feats'] = _cat(pred_dicts, "classifier_feats")
         
-        if self.configs.train_classifier_by_inference:
-            all_pred_dict['confidence_features_a'] = _cat(pred_dicts, "confidence_features_a")
-            all_pred_dict['confidence_features_z_pair'] = _cat(pred_dicts, "confidence_features_z_pair")
+        # if self.configs.train_classifier_by_inference:
+        #     all_pred_dict['confidence_features_a'] = _cat(pred_dicts, "confidence_features_a")
+        #     all_pred_dict['confidence_features_z_pair'] = _cat(pred_dicts, "confidence_features_z_pair")
 
         #print('all_pred_dict',all_pred_dict)
         all_log_dict = simple_merge_dict_list(log_dicts)
@@ -521,25 +521,25 @@ class Protenix(nn.Module):
             chunk_size=chunk_size,
         )
 
-        # Run confidence_features.py ConfidenceHead if train_classifier_by_inference is True
-        if getattr(self.configs, 'train_classifier_by_inference', False):
-            from protenix.model.modules import confidence_features
-            confidence_features = confidence_features.ConfidenceHead(**self.configs.model.confidence_head).to(s_inputs.device)
-            a, z_pair = confidence_features(
-                input_feature_dict=input_feature_dict,
-                s_inputs=s_inputs,
-                s_trunk=s,
-                z_trunk=z,
-                pair_mask=None,
-                x_pred_coords=pred_dict["coordinate"],
-                use_memory_efficient_kernel=self.configs.use_memory_efficient_kernel,
-                use_deepspeed_evo_attention=self.configs.use_deepspeed_evo_attention and deepspeed_evo_attention_condition_satisfy,
-                use_lma=self.configs.use_lma,
-                inplace_safe=inplace_safe,
-                chunk_size=chunk_size,
-            )
-            pred_dict['confidence_features_a'] = a
-            pred_dict['confidence_features_z_pair'] = z_pair
+        # # Run confidence_features.py ConfidenceHead if train_classifier_by_inference is True
+        # if getattr(self.configs, 'train_classifier_by_inference', False):
+        #     from protenix.model.modules import confidence_features
+        #     confidence_features = confidence_features.ConfidenceHead(**self.configs.model.confidence_head).to(s_inputs.device)
+        #     a, z_pair = confidence_features(
+        #         input_feature_dict=input_feature_dict,
+        #         s_inputs=s_inputs,
+        #         s_trunk=s,
+        #         z_trunk=z,
+        #         pair_mask=None,
+        #         x_pred_coords=pred_dict["coordinate"],
+        #         use_memory_efficient_kernel=self.configs.use_memory_efficient_kernel,
+        #         use_deepspeed_evo_attention=self.configs.use_deepspeed_evo_attention and deepspeed_evo_attention_condition_satisfy,
+        #         use_lma=self.configs.use_lma,
+        #         inplace_safe=inplace_safe,
+        #         chunk_size=chunk_size,
+        #     )
+        #     pred_dict['confidence_features_a'] = a
+        #     pred_dict['confidence_features_z_pair'] = z_pair
 
         step_confidence = time.time()
         time_tracker.update({"confidence": step_confidence - step_diffusion})

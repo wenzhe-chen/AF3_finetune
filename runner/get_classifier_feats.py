@@ -164,8 +164,13 @@ def main(configs: Any) -> None:
     num_data = len(dataloader.dataset)
     for seed in configs.seeds:
         seed_everything(seed=seed, deterministic=True)
-        a_feats = []
-        z_pair_feats = []
+        #a_feats = []
+        #z_pair_feats = []
+        #classifier_feats = []
+        atom_plddt = []
+        token_pair_pae = []
+        token_pair_pde = []
+        contact_probs = []
         labels = []
         for batch in dataloader:
             try:
@@ -198,12 +203,25 @@ def main(configs: Any) -> None:
                 #     atom_array=atom_array,
                 #     entity_poly_type=data["entity_poly_type"],
                 # )
-                print('confidence_features_a',prediction['confidence_features_a'].shape)
-                print('confidence_features_z_pair',prediction['confidence_features_z_pair'].shape)
+                #print('confidence_features_a',prediction['confidence_features_a'].shape)
+                #print('confidence_features_z_pair',prediction['confidence_features_z_pair'].shape)
+                #  print('prediction["classifier_feats"]',prediction["classifier_feats"].shape)
+
+                print('atom_plddt',prediction["full_data"][0]["atom_plddt"].shape)
+                print('token_pair_pae',prediction["full_data"][0]["token_pair_pae"].shape)
+                print('token_pair_pde',prediction["full_data"][0]["token_pair_pde"].shape)
+                print('contact_probs',prediction["full_data"][0]["contact_probs"].shape)
                 print('data["label_dict"]',data["label_dict"])
+
+
                 if configs.train_classifier_by_inference:
-                    a_feats.append(prediction["confidence_features_a"].cpu())
-                    z_pair_feats.append(prediction["confidence_features_z_pair"].cpu())
+                    #a_feats.append(prediction["confidence_features_a"].cpu())
+                    #z_pair_feats.append(prediction["confidence_features_z_pair"].cpu())
+                    #classifier_feats.append(prediction["classifier_feats"].cpu())
+                    atom_plddt.append(prediction["full_data"][0]["atom_plddt"].cpu())
+                    token_pair_pae.append(prediction["full_data"][0]["token_pair_pae"].cpu())
+                    token_pair_pde.append(prediction["full_data"][0]["token_pair_pde"].cpu())
+                    contact_probs.append(prediction["full_data"][0]["contact_probs"].cpu())
                     labels.append(data["label_dict"])
 
                 logger.info(
@@ -225,13 +243,22 @@ def main(configs: Any) -> None:
 
     if configs.train_classifier_by_inference:
         # Save as lists of tensors directly
-        print('a_feats (number of samples):', len(a_feats))
-        print('z_pair_feats (number of samples):', len(z_pair_feats))
+       # print('a_feats (number of samples):', len(a_feats))
+        # print('z_pair_feats (number of samples):', len(z_pair_feats))
         print('labels (number of samples):', len(labels))
-        torch.save(a_feats, os.path.join(configs.dump_dir, f'a_feats_{runname}.pt'))
-        torch.save(z_pair_feats, os.path.join(configs.dump_dir, f'z_pair_feats_{runname}.pt'))
+        #print('classifier_feats (number of samples):', len(classifier_feats))
+        print('atom_plddt (number of samples):', len(atom_plddt))
+        print('token_pair_pae (number of samples):', len(token_pair_pae))
+        print('token_pair_pde (number of samples):', len(token_pair_pde))
+        print('contact_probs (number of samples):', len(contact_probs))
+        #torch.save(a_feats, os.path.join(configs.dump_dir, f'a_feats_{runname}.pt'))
+        #torch.save(z_pair_feats, os.path.join(configs.dump_dir, f'z_pair_feats_{runname}.pt'))
         torch.save(labels, os.path.join(configs.dump_dir, f'labels_{runname}.pt'))
-
+        #   torch.save(classifier_feats, os.path.join(configs.dump_dir, f'classifier_feats_{runname}.pt'))
+        torch.save(atom_plddt, os.path.join(configs.dump_dir, f'atom_plddt_{runname}.pt'))
+        torch.save(token_pair_pae, os.path.join(configs.dump_dir, f'token_pair_pae_{runname}.pt'))
+        torch.save(token_pair_pde, os.path.join(configs.dump_dir, f'token_pair_pde_{runname}.pt'))
+        torch.save(contact_probs, os.path.join(configs.dump_dir, f'contact_probs_{runname}.pt'))
 
 if __name__ == "__main__":
     LOG_FORMAT = "%(asctime)s,%(msecs)-3d %(levelname)-8s [%(filename)s:%(lineno)s %(funcName)s] %(message)s"
