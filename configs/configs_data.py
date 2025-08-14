@@ -61,7 +61,7 @@ default_weighted_pdb_configs = {
     "shuffle_sym_ids": GlobalConfigValue("train_shuffle_sym_ids"),
 }
 
-DATA_ROOT_DIR = "/gpfs/data/hlin-lab/wenzhechen/database/af3-dev/release_data/"
+DATA_ROOT_DIR = "/home/fs01/wc648/protenix/af3-dev/release_data/"
 
 data_configs = {
     "num_dl_workers": 16,

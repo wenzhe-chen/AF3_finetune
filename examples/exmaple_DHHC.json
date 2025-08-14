@@ -1,0 +1,131 @@
+[
+    {
+        "name": "ZDHHC20_Q6ZPB5_C85",
+        "use_msa": true,
+        "use_esm": false,
+        "sequences": [
+            {
+                "proteinChain": {
+                    "count": 1,
+                    "sequence": "MAPWTLWRCCQRVVGWVPVLFITFVVVWSYYAYVVELCVFTIFGNEENGKTVVYLVAFHLFFVMFVWSYWMTIFTSPASPSKEFYLSNSEKERYEKEFSQERQQEILRRAARALPIYTTSASKTIRYCEKCQLIKPDRAHHCSACDSCILKMDHHCPWVNNCVGFSNYKFFLLFLLYSLLYCLFVAATVLEYFIKFWTNELTDTRAKFHVLFLFFVSAMFFISVLSLFSYHCWLVGKNRTTIESFRAPTFSYGPDGNGFSLGCSKNWRQVFGDEKKYWLLPIFSSLGDGCSFPTRLVGMDPEQASVTNQNEYARSSGSNQPFPIKPLSESKNRLLDSESQWLENGAEEGIVKSGTNNHVTVAIEN",
+                    "modifications": [],
+                    "msa": {
+                        "precomputed_msa_dir": "/home/fs01/wc648/protenix/searched_msa/1",
+                        "pairing_db": "uniref100"
+                    }
+                }
+            },
+            {
+                "proteinChain": {
+                    "count": 1,
+                    "sequence": "MWPAPCSVGRLLIFFMCSSSGYVVQGCGPSPGARTTLGSPLSLWSIKTPSHIFCTRRAINLGFPSPPLVQLIFWSLNAGLDLYLCLISSCGFSQVFWPVEAFCSFSLSFFALALSHKFVICRLDQHIFSGFTKSLKNLPPCHRTDI",
+                    "modifications": [
+                        {
+                            "ptmType": "CCD_P1L",
+                            "ptmPosition": 85
+                        }
+                    ],
+                    "msa": {
+                        "precomputed_msa_dir": "/home/fs01/wc648/protenix/searched_msa/2",
+                        "pairing_db": "uniref100"
+                    }
+                }
+            },
+            {
+                "ion": {
+                    "count": 3,
+                    "ion": "ZN"
+                }
+            }
+        ],
+        "constraint": {},
+        "model_seeds": [],
+        "covalent_bonds": []
+    },
+    {
+        "name": "ZDHHC20_Q6ZPB5_C90",
+        "use_msa": true,
+        "use_esm": false,
+        "sequences": [
+            {
+                "proteinChain": {
+                    "count": 1,
+                    "sequence": "MAPWTLWRCCQRVVGWVPVLFITFVVVWSYYAYVVELCVFTIFGNEENGKTVVYLVAFHLFFVMFVWSYWMTIFTSPASPSKEFYLSNSEKERYEKEFSQERQQEILRRAARALPIYTTSASKTIRYCEKCQLIKPDRAHHCSACDSCILKMDHHCPWVNNCVGFSNYKFFLLFLLYSLLYCLFVAATVLEYFIKFWTNELTDTRAKFHVLFLFFVSAMFFISVLSLFSYHCWLVGKNRTTIESFRAPTFSYGPDGNGFSLGCSKNWRQVFGDEKKYWLLPIFSSLGDGCSFPTRLVGMDPEQASVTNQNEYARSSGSNQPFPIKPLSESKNRLLDSESQWLENGAEEGIVKSGTNNHVTVAIEN",
+                    "modifications": [],
+                    "msa": {
+                        "precomputed_msa_dir": "/home/fs01/wc648/protenix/searched_msa/1",
+                        "pairing_db": "uniref100"
+                    }
+                }
+            },
+            {
+                "proteinChain": {
+                    "count": 1,
+                    "sequence": "MWPAPCSVGRLLIFFMCSSSGYVVQGCGPSPGARTTLGSPLSLWSIKTPSHIFCTRRAINLGFPSPPLVQLIFWSLNAGLDLYLCLISSCGFSQVFWPVEAFCSFSLSFFALALSHKFVICRLDQHIFSGFTKSLKNLPPCHRTDI",
+                    "modifications": [
+                        {
+                            "ptmType": "CCD_P1L",
+                            "ptmPosition": 90
+                        }
+                    ],
+                    "msa": {
+                        "precomputed_msa_dir": "/home/fs01/wc648/protenix/searched_msa/2",
+                        "pairing_db": "uniref100"
+                    }
+                }
+            },
+            {
+                "ion": {
+                    "count": 3,
+                    "ion": "ZN"
+                }
+            }
+        ],
+        "constraint": {},
+        "model_seeds": [],
+        "covalent_bonds": []
+    },
+    {
+        "name": "ZDHHC20_Q6ZPB5_C103",
+        "use_msa": true,
+        "use_esm": false,
+        "sequences": [
+            {
+                "proteinChain": {
+                    "count": 1,
+                    "sequence": "MAPWTLWRCCQRVVGWVPVLFITFVVVWSYYAYVVELCVFTIFGNEENGKTVVYLVAFHLFFVMFVWSYWMTIFTSPASPSKEFYLSNSEKERYEKEFSQERQQEILRRAARALPIYTTSASKTIRYCEKCQLIKPDRAHHCSACDSCILKMDHHCPWVNNCVGFSNYKFFLLFLLYSLLYCLFVAATVLEYFIKFWTNELTDTRAKFHVLFLFFVSAMFFISVLSLFSYHCWLVGKNRTTIESFRAPTFSYGPDGNGFSLGCSKNWRQVFGDEKKYWLLPIFSSLGDGCSFPTRLVGMDPEQASVTNQNEYARSSGSNQPFPIKPLSESKNRLLDSESQWLENGAEEGIVKSGTNNHVTVAIEN",
+                    "modifications": [],
+                    "msa": {
+                        "precomputed_msa_dir": "/home/fs01/wc648/protenix/searched_msa/1",
+                        "pairing_db": "uniref100"
+                    }
+                }
+            },
+            {
+                "proteinChain": {
+                    "count": 1,
+                    "sequence": "MWPAPCSVGRLLIFFMCSSSGYVVQGCGPSPGARTTLGSPLSLWSIKTPSHIFCTRRAINLGFPSPPLVQLIFWSLNAGLDLYLCLISSCGFSQVFWPVEAFCSFSLSFFALALSHKFVICRLDQHIFSGFTKSLKNLPPCHRTDI",
+                    "modifications": [
+                        {
+                            "ptmType": "CCD_P1L",
+                            "ptmPosition": 103
+                        }
+                    ],
+                    "msa": {
+                        "precomputed_msa_dir": "/home/fs01/wc648/protenix/searched_msa/2",
+                        "pairing_db": "uniref100"
+                    }
+                }
+            },
+            {
+                "ion": {
+                    "count": 3,
+                    "ion": "ZN"
+                }
+            }
+        ],
+        "constraint": {},
+        "model_seeds": [],
+        "covalent_bonds": []
+    }
+]
